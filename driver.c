@@ -52,14 +52,14 @@ static int base_name_and_path_set(const char *arg, const struct kernel_param *kp
 		pr_err("need to close device before setting new one\n");
 		return -EBUSY;
 	}
-	len = strlen(arg);
 
+	len = strlen(arg);
 	name = kzalloc(sizeof(char) * (len + 1), GFP_KERNEL);
 	path = kzalloc(sizeof(char) * len, GFP_KERNEL);
 	if (!name || !path) {
 		kfree(name);
 		kfree(path);
-		pr_err("failed to allocate base block device name or path\n");
+		pr_err("failed to allocate name or path\n");
 		return -ENOMEM;
 	}
 
@@ -68,7 +68,7 @@ static int base_name_and_path_set(const char *arg, const struct kernel_param *kp
 
 	base_handle->name = name;
 	base_handle->path = path;
-
+	
 	return 0;
 }
 
@@ -81,8 +81,8 @@ static int base_name_get(char *buf, const struct kernel_param *kp)
 		return -EINVAL;
 	}
 
-	len = strlen(base_handle->path);
-	strcpy(buf, base_handle->path);
+	len = strlen(base_handle->name);
+	strcpy(buf, base_handle->name);
 
 	return len;
 }
@@ -117,7 +117,7 @@ static int open_base(const char *arg, const struct kernel_param *kp)
 
 	base_handle->bdev_file = bdev_file;
 
-	pr_warn("%s:open", base_handle->path);
+	pr_warn("%s: open", base_handle->path);
 
 	return 0;
 }
