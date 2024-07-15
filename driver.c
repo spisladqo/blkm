@@ -96,14 +96,8 @@ static int open_base(const char *arg, const struct kernel_param *kp)
 {
 	struct file *bdev_file;
 
-	if (!base_handle) {
-		pr_err("base device handle isn't allocated "
-		"(didn't set base block device name?)\n");
-		return -EINVAL;
-	}
-	if (!base_handle->path) {
-		pr_err("base device path isn't allocated "
-		"(didn't set base block device name?)\n");
+	if (!base_handle || !base_handle->path) {
+		pr_err("nothing to open\n");
 		return -EINVAL;
 	}
 	if (base_handle->bdev_file) {
@@ -133,11 +127,31 @@ static const struct kernel_param_ops open_ops = {
 	.get = NULL,
 };
 
+static int close_base(const char *arg, const struct kernel_param *kp)
+{
+	if (!base_handle || !base_handle->bdev_file) {
+		pr_err("nothing to close\n");
+		return -EINVAL;
+	}
+	fput(base_handle->bdev_file);
+	base_handle->bdev_file = NULL;
+
+	return 0;
+}
+
+static const struct kernel_param_ops close_ops = {
+	.set = close_base,
+	.get = NULL,
+};
+
 MODULE_PARM_DESC(base, "Base block device name");
 module_param_cb(base, &base_ops, NULL, S_IRUGO | S_IWUSR);
 
 MODULE_PARM_DESC(open, "Open base block device");
 module_param_cb(open, &open_ops, NULL, S_IWUSR);
+
+MODULE_PARM_DESC(close, "Close base block device");
+module_param_cb(close, &close_ops, NULL, S_IWUSR);
 
 module_init(blkdevm_init);
 module_exit(blkdevm_exit);
