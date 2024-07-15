@@ -10,6 +10,7 @@
 #define THIS_DEVICE_PATH "/dev/sdmy"
 
 static struct block_device_handle {
+	struct file *bdev_file;
 	char *name;
 	char *path;
 };
@@ -18,20 +19,22 @@ static struct block_device_handle *base_handle;
 
 static int __init blkdevm_init(void)
 {
-	pr_info("blkdev module init\n");
+	pr_warn("blkdev module init\n");
 
 	return 0;
 }
 
 static void __exit blkdevm_exit(void)
 {
+	if (base_handle && base_handle->bdev_file)
+		fput(base_handle->bdev_file);
 	if (base_handle) {
 		kfree(base_handle->name);
 		kfree(base_handle->path);
 	}
 	kfree(base_handle);
 
-	pr_info("blkdev module exit\n");
+	pr_warn("blkdev module exit\n");
 }
 
 static int base_name_and_path_set(const char *arg, const struct kernel_param *kp)
@@ -44,6 +47,10 @@ static int base_name_and_path_set(const char *arg, const struct kernel_param *kp
 		base_handle = kzalloc(sizeof(*base_handle), GFP_KERNEL);
 		if (!base_handle)
 			return -ENOMEM;
+	}
+	if (base_handle->bdev_file) {
+		pr_err("need to close device before setting new one\n");
+		return -EBUSY;
 	}
 	len = strlen(arg);
 
@@ -69,13 +76,13 @@ static int base_name_get(char *buf, const struct kernel_param *kp)
 {
 	ssize_t len;
 
-	if (!base_handle || !base_handle->name) {
+	if (!base_handle || !base_handle->path) {
 		pr_err("base device name was not set\n");
 		return -EINVAL;
 	}
 
-	len = strlen(base_handle->name);
-	strcpy(buf, base_handle->name);
+	len = strlen(base_handle->path);
+	strcpy(buf, base_handle->path);
 
 	return len;
 }
@@ -85,8 +92,52 @@ static const struct kernel_param_ops base_ops = {
 	.get = base_name_get,
 };
 
+static int open_base(const char *arg, const struct kernel_param *kp)
+{
+	struct file *bdev_file;
+
+	if (!base_handle) {
+		pr_err("base device handle isn't allocated "
+		"(didn't set base block device name?)\n");
+		return -EINVAL;
+	}
+	if (!base_handle->path) {
+		pr_err("base device path isn't allocated "
+		"(didn't set base block device name?)\n");
+		return -EINVAL;
+	}
+	if (base_handle->bdev_file) {
+		pr_err("base device is already opened\n");
+		return -EBUSY;
+	}
+
+	bdev_file = bdev_file_open_by_path(base_handle->path,
+		BLK_OPEN_READ | BLK_OPEN_WRITE, NULL, NULL);
+	pr_err("bdev file: %p\n", bdev_file);
+	
+	if (IS_ERR(bdev_file)) {
+		pr_err("cannot open block device %s, "
+		"did you set a valid name?\n", base_handle->path);
+		return PTR_ERR(bdev_file);
+	}
+
+	base_handle->bdev_file = bdev_file;
+
+	pr_warn("%s:open", base_handle->path);
+
+	return 0;
+}
+
+static const struct kernel_param_ops open_ops = {
+	.set = open_base,
+	.get = NULL,
+};
+
 MODULE_PARM_DESC(base, "Base block device name");
 module_param_cb(base, &base_ops, NULL, S_IRUGO | S_IWUSR);
+
+MODULE_PARM_DESC(open, "Open base block device");
+module_param_cb(open, &open_ops, NULL, S_IWUSR);
 
 module_init(blkdevm_init);
 module_exit(blkdevm_exit);
