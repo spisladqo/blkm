@@ -190,12 +190,14 @@ static const struct block_device_operations sdmy_fops = {
 
 static int close_base(const char *arg, const struct kernel_param *kp)
 {
-	if (!base_handle || !base_handle->bdev_file) {
+	if (!base_handle || !base_handle->bdev_file || !base_handle->assoc_disk) {
 		pr_err("nothing to close\n");
 		return -EINVAL;
 	}
 	fput(base_handle->bdev_file);
+	put_disk(base_handle->assoc_disk);
 	base_handle->bdev_file = NULL;
+	base_handle->assoc_disk = NULL;
 
 	return 0;
 }
