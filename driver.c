@@ -146,7 +146,7 @@ static int open_base(const char *arg, const struct kernel_param *kp)
 	base_handle->bh = bh;
 	base_handle->assoc_disk = new_disk;
 
-	pr_info("opened device '%s' and created disk '%s' based on it\n",
+	pr_warn("opened device '%s' and created disk '%s' based on it\n",
 			base_handle->path, new_disk->disk_name);
 
 	return 0;
@@ -208,7 +208,7 @@ static int close_base(const char *arg, const struct kernel_param *kp)
 	put_disk(base_handle->assoc_disk);
 	base_handle->assoc_disk = NULL;
 
-	pr_info("closed device and destroyed disk successfuly\n");
+	pr_warn("closed device and destroyed disk successfuly\n");
 
 	return 0;
 }
