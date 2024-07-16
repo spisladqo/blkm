@@ -9,6 +9,9 @@
 #define THIS_DEVICE_NAME "sdmy"
 #define THIS_DEVICE_PATH "/dev/sdmy"
 
+static struct gendisk *init_disk(sector_t capacity);
+static const struct block_device_operations sdmy_fops;
+
 static struct block_device_handle {
 	struct file *bdev_file;
 	struct gendisk *assoc_disk;
@@ -18,9 +21,6 @@ static struct block_device_handle {
 
 static struct block_device_handle *base_handle;
 static int major;
-
-static struct gendisk *init_disk(sector_t capacity);
-static const struct block_device_operations sdmy_fops;
 
 static int __init blkdevm_init(void)
 {
@@ -36,10 +36,12 @@ static int __init blkdevm_init(void)
 
 static void __exit blkdevm_exit(void)
 {
-	if (base_handle && base_handle->assoc_disk)
-		put_disk(base_handle->assoc_disk);
-	if (base_handle && base_handle->bdev_file)
+	if (base_handle && base_handle->bdev_file) {
 		fput(base_handle->bdev_file);
+	}
+	if (base_handle && base_handle->assoc_disk) {
+		put_disk(base_handle->assoc_disk);
+	}
 	if (base_handle) {
 		kfree(base_handle->name);
 		kfree(base_handle->path);
@@ -137,7 +139,6 @@ static int open_base(const char *arg, const struct kernel_param *kp)
 	if (IS_ERR(disk))
 		return PTR_ERR(disk);
 
-
 	base_handle->bdev_file = bdev_file;
 	base_handle->assoc_disk = disk;
 
@@ -185,7 +186,7 @@ static struct gendisk *init_disk(sector_t capacity)
 
 static const struct block_device_operations sdmy_fops = {
 	.owner = THIS_MODULE,
-//	.submit_bio = sdmy_submit_bio,
+	// .submit_bio = sdmy_submit_bio,
 };
 
 static int close_base(const char *arg, const struct kernel_param *kp)
