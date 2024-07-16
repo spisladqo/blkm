@@ -11,14 +11,24 @@
 
 static struct block_device_handle {
 	struct file *bdev_file;
+	struct gendisk *assoc_disk;
 	char *name;
 	char *path;
 };
 
 static struct block_device_handle *base_handle;
+static int major;
+
+static struct gendisk *init_disk(void);
+static const struct block_device_operations sdmy_fops;
 
 static int __init blkdevm_init(void)
 {
+	major = register_blkdev(0, THIS_DEVICE_NAME);
+	if (major < 0) {
+		pr_err("failed to obtain major\n");
+		return major;
+	}
 	pr_warn("blkdev module init\n");
 
 	return 0;
@@ -26,6 +36,8 @@ static int __init blkdevm_init(void)
 
 static void __exit blkdevm_exit(void)
 {
+	if (base_handle && base_handle->assoc_disk)
+		put_disk(base_handle->assoc_disk);
 	if (base_handle && base_handle->bdev_file)
 		fput(base_handle->bdev_file);
 	if (base_handle) {
@@ -95,6 +107,7 @@ static const struct kernel_param_ops base_ops = {
 static int open_base(const char *arg, const struct kernel_param *kp)
 {
 	struct file *bdev_file;
+	struct gendisk *disk;
 
 	if (!base_handle || !base_handle->path) {
 		pr_err("nothing to open\n");
@@ -115,7 +128,12 @@ static int open_base(const char *arg, const struct kernel_param *kp)
 		return PTR_ERR(bdev_file);
 	}
 
+	disk = init_disk();
+	if (IS_ERR(disk))
+		return PTR_ERR(disk);
+
 	base_handle->bdev_file = bdev_file;
+	base_handle->assoc_disk = disk;
 
 	pr_warn("%s: open", base_handle->path);
 
@@ -125,6 +143,42 @@ static int open_base(const char *arg, const struct kernel_param *kp)
 static const struct kernel_param_ops open_ops = {
 	.set = open_base,
 	.get = NULL,
+};
+
+static struct gendisk *init_disk(void)
+{
+	struct gendisk *disk;
+	int err;
+
+	disk = blk_alloc_disk(NULL, NUMA_NO_NODE);
+	if (IS_ERR(disk)) {
+		pr_err("failed to allocate disk\n");
+		return disk;
+	}
+
+	disk->major = major;
+	disk->first_minor = 0;
+	disk->minors = 1;
+	strcpy(disk->disk_name, base_handle->path);
+	disk->fops = &sdmy_fops;
+	disk->private_data = NULL;
+
+	err = add_disk(disk);
+	if (err) {
+		pr_err("failed to add disk\n");
+		put_disk(disk);
+		return ERR_PTR(err);
+	}
+
+	// set_capacity(disk, get_capacity(_));
+	pr_warn("disk capacity: %llu\n", get_capacity(disk));
+
+	return disk;
+}
+
+static const struct block_device_operations sdmy_fops = {
+	.owner = THIS_MODULE,
+//	.submit_bio = sdmy_submit_bio,
 };
 
 static int close_base(const char *arg, const struct kernel_param *kp)
