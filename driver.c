@@ -10,6 +10,7 @@
 #define THIS_DEVICE_PATH "/dev/sdmy"
 
 static struct gendisk *init_disk(sector_t capacity);
+void sdmy_submit_bio(struct bio *bio);
 static const struct block_device_operations sdmy_fops;
 
 static struct block_device_handle {
@@ -136,7 +137,7 @@ static int open_base(const char *arg, const struct kernel_param *kp)
 	base_disk = base_dev->bd_disk;
 	base_disk_cap = get_capacity(base_disk);
 	new_disk = init_disk(base_disk_cap);
-	if (IS_ERR(new_disk)) {
+	if (IS_ERR_OR_NULL(new_disk)) {
 		bdev_release(bh);
 		return PTR_ERR(new_disk);
 	}
@@ -161,7 +162,7 @@ static struct gendisk *init_disk(sector_t capacity)
 	struct gendisk *disk;
 
 	disk = blk_alloc_disk(NUMA_NO_NODE);
-	if (!disk) {
+	if (IS_ERR_OR_NULL(disk)) {
 		pr_err("failed to allocate disk\n");
 		return disk;
 	}
