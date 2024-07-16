@@ -19,7 +19,7 @@ static struct block_device_handle {
 static struct block_device_handle *base_handle;
 static int major;
 
-static struct gendisk *init_disk(void);
+static struct gendisk *init_disk(sector_t capacity);
 static const struct block_device_operations sdmy_fops;
 
 static int __init blkdevm_init(void)
@@ -107,6 +107,8 @@ static const struct kernel_param_ops base_ops = {
 static int open_base(const char *arg, const struct kernel_param *kp)
 {
 	struct file *bdev_file;
+	struct block_device *bdev;
+	sector_t disk_capacity;
 	struct gendisk *disk;
 
 	if (!base_handle || !base_handle->path) {
@@ -128,9 +130,13 @@ static int open_base(const char *arg, const struct kernel_param *kp)
 		return PTR_ERR(bdev_file);
 	}
 
-	disk = init_disk();
+	bdev = file_bdev(bdev_file);
+	disk_capacity = get_capacity(bdev->bd_disk);
+
+	disk = init_disk(disk_capacity);
 	if (IS_ERR(disk))
 		return PTR_ERR(disk);
+
 
 	base_handle->bdev_file = bdev_file;
 	base_handle->assoc_disk = disk;
@@ -145,7 +151,7 @@ static const struct kernel_param_ops open_ops = {
 	.get = NULL,
 };
 
-static struct gendisk *init_disk(void)
+static struct gendisk *init_disk(sector_t capacity)
 {
 	struct gendisk *disk;
 	int err;
@@ -170,8 +176,9 @@ static struct gendisk *init_disk(void)
 		return ERR_PTR(err);
 	}
 
-	// set_capacity(disk, get_capacity(_));
-	pr_warn("disk capacity: %llu\n", get_capacity(disk));
+	pr_warn("requested capacity: %llu", capacity);
+	set_capacity(disk, capacity);
+	pr_warn("actual capacity: %llu\n", get_capacity(disk));
 
 	return disk;
 }
