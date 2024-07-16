@@ -138,6 +138,7 @@ static int open_base(const char *arg, const struct kernel_param *kp)
 	disk = init_disk(disk_capacity);
 	if (IS_ERR(disk))
 		return PTR_ERR(disk);
+	disk->private_data = base_handle;
 
 	base_handle->bdev_file = bdev_file;
 	base_handle->assoc_disk = disk;
@@ -168,7 +169,6 @@ static struct gendisk *init_disk(sector_t capacity)
 	disk->minors = 1;
 	strcpy(disk->disk_name, THIS_DEVICE_NAME);
 	disk->fops = &sdmy_fops;
-	disk->private_data = NULL;
 
 	err = add_disk(disk);
 	if (err) {
