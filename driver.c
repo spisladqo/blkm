@@ -165,7 +165,7 @@ static struct gendisk *init_disk(sector_t capacity)
 	disk->major = major;
 	disk->first_minor = 0;
 	disk->minors = 1;
-	strcpy(disk->disk_name, base_handle->path);
+	strcpy(disk->disk_name, THIS_DEVICE_NAME);
 	disk->fops = &sdmy_fops;
 	disk->private_data = NULL;
 
