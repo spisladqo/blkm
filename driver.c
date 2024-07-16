@@ -13,7 +13,7 @@ static struct gendisk *init_disk(sector_t capacity);
 static const struct block_device_operations sdmy_fops;
 
 static struct block_device_handle {
-	struct file *bdev_file;
+	struct bdev_handle *bh;
 	struct gendisk *assoc_disk;
 	char *name;
 	char *path;
@@ -36,17 +36,19 @@ static int __init blkdevm_init(void)
 
 static void __exit blkdevm_exit(void)
 {
-	if (base_handle && base_handle->bdev_file) {
-		fput(base_handle->bdev_file);
-	}
-	if (base_handle && base_handle->assoc_disk) {
-		put_disk(base_handle->assoc_disk);
-	}
 	if (base_handle) {
 		kfree(base_handle->name);
 		kfree(base_handle->path);
 	}
+	if (base_handle && base_handle->assoc_disk) {
+		put_disk(base_handle->assoc_disk);
+	}
+	if (base_handle && base_handle->bh) {
+		bdev_release(base_handle->bh);
+	}
 	kfree(base_handle);
+
+	unregister_blkdev(major, THIS_DEVICE_NAME);
 
 	pr_warn("blkdev module exit\n");
 }
@@ -62,7 +64,7 @@ static int base_name_and_path_set(const char *arg, const struct kernel_param *kp
 		if (!base_handle)
 			return -ENOMEM;
 	}
-	if (base_handle->bdev_file) {
+	if (base_handle->bh || base_handle->assoc_disk) {
 		pr_err("need to close device before setting new one\n");
 		return -EBUSY;
 	}
@@ -108,42 +110,43 @@ static const struct kernel_param_ops base_ops = {
 
 static int open_base(const char *arg, const struct kernel_param *kp)
 {
-	struct file *bdev_file;
-	struct block_device *bdev;
-	sector_t disk_capacity;
-	struct gendisk *disk;
+	struct bdev_handle *bh;
+	struct block_device *base_dev;
+	struct gendisk *base_disk;
+	sector_t base_disk_cap;
+	struct gendisk *new_disk;
 
 	if (!base_handle || !base_handle->path) {
 		pr_err("nothing to open\n");
 		return -EINVAL;
 	}
-	if (base_handle->bdev_file) {
+	if (base_handle->bh || base_handle->assoc_disk) {
 		pr_err("base device is already opened\n");
 		return -EBUSY;
 	}
 
-	bdev_file = bdev_file_open_by_path(base_handle->path,
-		BLK_OPEN_READ | BLK_OPEN_WRITE, NULL, NULL);
-	pr_err("bdev file: %p\n", bdev_file);
-	
-	if (IS_ERR(bdev_file)) {
-		pr_err("cannot open block device %s, "
-		"did you set a valid name?\n", base_handle->path);
-		return PTR_ERR(bdev_file);
+	bh = bdev_open_by_path(base_handle->path, BLK_OPEN_READ |
+				BLK_OPEN_WRITE, NULL, NULL);
+	if (IS_ERR(bh)) {
+		pr_err("cannot open block device %s\n", base_handle->path);
+		return PTR_ERR(bh);
 	}
 
-	bdev = file_bdev(bdev_file);
-	disk_capacity = get_capacity(bdev->bd_disk);
+	base_dev = bh->bdev;
+	base_disk = base_dev->bd_disk;
+	base_disk_cap = get_capacity(base_disk);
+	new_disk = init_disk(base_disk_cap);
+	if (IS_ERR(new_disk)) {
+		bdev_release(bh);
+		return PTR_ERR(new_disk);
+	}
+	new_disk->private_data = base_handle;
 
-	disk = init_disk(disk_capacity);
-	if (IS_ERR(disk))
-		return PTR_ERR(disk);
-	disk->private_data = base_handle;
+	base_handle->bh = bh;
+	base_handle->assoc_disk = new_disk;
 
-	base_handle->bdev_file = bdev_file;
-	base_handle->assoc_disk = disk;
-
-	pr_warn("%s: open", base_handle->path);
+	pr_info("opened device '%s' and created disk '%s' based on it\n",
+			base_handle->path, new_disk->disk_name);
 
 	return 0;
 }
@@ -157,14 +160,14 @@ static struct gendisk *init_disk(sector_t capacity)
 {
 	struct gendisk *disk;
 
-	disk = blk_alloc_disk(NULL, NUMA_NO_NODE);
-	if (IS_ERR(disk)) {
+	disk = blk_alloc_disk(NUMA_NO_NODE);
+	if (!disk) {
 		pr_err("failed to allocate disk\n");
 		return disk;
 	}
 
 	disk->major = major;
-	disk->first_minor = 0;
+	disk->first_minor = 1;
 	disk->minors = 1;
 	strcpy(disk->disk_name, THIS_DEVICE_NAME);
 	disk->fops = &sdmy_fops;
@@ -183,16 +186,28 @@ static const struct block_device_operations sdmy_fops = {
 
 static int close_base(const char *arg, const struct kernel_param *kp)
 {
-	if (!base_handle || !base_handle->bdev_file || !base_handle->assoc_disk) {
+	char *disk_name;
+
+	if (!base_handle || !base_handle->bh) {
 		pr_err("nothing to close\n");
 		return -EINVAL;
 	}
-	fput(base_handle->bdev_file);
+	if (!base_handle->assoc_disk) {
+		pr_err("disk wasn't allocated, cannot close\n");
+		return -EINVAL;
+	}
+
+	disk_name = base_handle->assoc_disk->disk_name;
+	pr_warn("closing device '%s' and destroying disk %s based on it\n",
+			base_handle->path, disk_name);
+
+	bdev_release(base_handle->bh);
+	base_handle->bh = NULL;
+	del_gendisk(base_handle->assoc_disk);
 	put_disk(base_handle->assoc_disk);
-	base_handle->bdev_file = NULL;
 	base_handle->assoc_disk = NULL;
 
-	pr_warn("%s: close\n", base_handle->path);
+	pr_info("closed device and destroyed disk successfuly\n");
 
 	return 0;
 }
