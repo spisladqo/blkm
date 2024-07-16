@@ -156,7 +156,6 @@ static const struct kernel_param_ops open_ops = {
 static struct gendisk *init_disk(sector_t capacity)
 {
 	struct gendisk *disk;
-	int err;
 
 	disk = blk_alloc_disk(NULL, NUMA_NO_NODE);
 	if (IS_ERR(disk)) {
@@ -170,14 +169,7 @@ static struct gendisk *init_disk(sector_t capacity)
 	strcpy(disk->disk_name, THIS_DEVICE_NAME);
 	disk->fops = &sdmy_fops;
 
-	err = add_disk(disk);
-	if (err) {
-		pr_err("failed to add disk\n");
-		put_disk(disk);
-		return ERR_PTR(err);
-	}
-
-	pr_warn("requested capacity: %llu", capacity);
+	pr_warn("requested capacity: %llu\n", capacity);
 	set_capacity(disk, capacity);
 	pr_warn("actual capacity: %llu\n", get_capacity(disk));
 
@@ -199,6 +191,8 @@ static int close_base(const char *arg, const struct kernel_param *kp)
 	put_disk(base_handle->assoc_disk);
 	base_handle->bdev_file = NULL;
 	base_handle->assoc_disk = NULL;
+
+	pr_warn("%s: close\n", base_handle->path);
 
 	return 0;
 }
