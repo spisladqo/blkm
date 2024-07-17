@@ -29,4 +29,4 @@ Please use it with caution.
 
 ## License
 
-Distributed under the GPL-2.0 License. Pleases see [LICENSE](https://github.com/spisladqo/blkm/blob/main/LICENSE) for more details.
+Distributed under the GPL-2.0 License. Please see [LICENSE](https://github.com/spisladqo/blkm/blob/main/LICENSE) for more details.
