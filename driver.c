@@ -221,6 +221,7 @@ static void sdmy_submit_bio(struct bio *bio)
 	new_bio = bio_alloc_clone(base_dev, bio, GFP_KERNEL, bio_pool);
 	if (!new_bio) {
 		pr_err("failed to allocate new bio based on incoming bio\n");
+		bio_io_error(bio);
 		return;
 	}
 
