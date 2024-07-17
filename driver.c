@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * A block device driver module by: Daniel Vlasenco
+ * Bio-based block device driver module by: Daniel Vlasenco
  */
 
 #include <linux/blkdev.h>
@@ -271,4 +271,4 @@ module_exit(blkm_exit);
 
 MODULE_AUTHOR("Vlasenco Daniel <vlasenko.daniil26@gmail.com>");
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Block device driver module");
+MODULE_DESCRIPTION("Bio-based block device driver module");
