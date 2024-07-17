@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * A block device driver module by: Daniel Vlasenco
+ * Bio-based block device driver module by: Daniel Vlasenco
  */
 
 #include <linux/blkdev.h>
@@ -8,6 +8,7 @@
 
 #define THIS_DEVICE_NAME "sdblk"
 #define THIS_DEVICE_PATH "/dev/sdblk"
+#define MAX_PATH_LEN 20
 
 static struct gendisk *init_disk(sector_t capacity);
 static void blkm_submit_bio(struct bio *bio);
@@ -16,7 +17,6 @@ static const struct block_device_operations blkm_fops;
 static struct blkm_dev {
 	struct bdev_handle *bh;
 	struct gendisk *assoc_disk;
-	char *name;
 	char *path;
 };
 
@@ -56,7 +56,6 @@ static int __init blkm_init(void)
 static void __exit blkm_exit(void)
 {
 	if (base_handle) {
-		kfree(base_handle->name);
 		kfree(base_handle->path);
 	}
 	if (base_handle && base_handle->assoc_disk) {
@@ -74,10 +73,9 @@ static void __exit blkm_exit(void)
 	pr_warn("blkdev module exit\n");
 }
 
-static int base_name_and_path_set(const char *arg, const struct kernel_param *kp)
+static int base_path_set(const char *arg, const struct kernel_param *kp)
 {
 	int len;
-	char *name;
 	char *path;
 
 	if (!base_handle) {
@@ -90,43 +88,37 @@ static int base_name_and_path_set(const char *arg, const struct kernel_param *kp
 		return -EBUSY;
 	}
 
-	len = strlen(arg);
-	name = kzalloc(sizeof(char) * (len + 1), GFP_KERNEL);
-	path = kzalloc(sizeof(char) * len, GFP_KERNEL);
-	if (!name || !path) {
-		kfree(name);
-		kfree(path);
-		pr_err("failed to allocate name or path\n");
+	len = strcspn(arg, "\n");
+	if (len >= MAX_PATH_LEN)
+		return -ENAMETOOLONG;
+
+	path = kzalloc(sizeof(char) * (len + 1), GFP_KERNEL);
+	if (!path) {
+		pr_err("failed to allocate path\n");
 		return -ENOMEM;
 	}
-
-	strncpy(name, arg, len);
-	strncpy(path, arg, len - 1);
-
-	base_handle->name = name;
+	strncpy(path, arg, len);
 	base_handle->path = path;
-	
+
 	return 0;
 }
 
-static int base_name_get(char *buf, const struct kernel_param *kp)
+static int base_path_get(char *buf, const struct kernel_param *kp)
 {
-	ssize_t len;
+	int len;
 
 	if (!base_handle || !base_handle->path) {
-		pr_err("base device name was not set\n");
+		pr_err("path to base device was not set\n");
 		return -EINVAL;
 	}
-
-	len = strlen(base_handle->name);
-	strcpy(buf, base_handle->name);
+	len = snprintf(buf, MAX_PATH_LEN, "%s\n", base_handle->path);
 
 	return len;
 }
 
 static const struct kernel_param_ops base_ops = {
-	.set = base_name_and_path_set,
-	.get = base_name_get,
+	.set = base_path_set,
+	.get = base_path_get,
 };
 
 static int open_base_and_create_disk(const char *arg, const struct kernel_param *kp)
@@ -148,7 +140,7 @@ static int open_base_and_create_disk(const char *arg, const struct kernel_param 
 	bh = bdev_open_by_path(base_handle->path, BLK_OPEN_READ |
 				BLK_OPEN_WRITE, NULL, NULL);
 	if (IS_ERR(bh)) {
-		pr_err("cannot open block device %s\n", base_handle->path);
+		pr_err("cannot open block device '%s'\n", base_handle->path);
 		return PTR_ERR(bh);
 	}
 
@@ -249,7 +241,7 @@ static int close_base(const char *arg, const struct kernel_param *kp)
 	}
 
 	disk_name = base_handle->assoc_disk->disk_name;
-	pr_warn("closing device '%s' and destroying disk %s based on it\n",
+	pr_warn("closing device '%s' and destroying disk '%s' based on it\n",
 			base_handle->path, disk_name);
 
 	bdev_release(base_handle->bh);
@@ -280,6 +272,6 @@ module_param_cb(close, &close_ops, NULL, S_IWUSR);
 module_init(blkm_init);
 module_exit(blkm_exit);
 
-MODULE_AUTHOR("Vlasenko Daniil <vlasenko.daniil26@gmail.com>");
+MODULE_AUTHOR("Vlasenco Daniel <vlasenko.daniil26@gmail.com>");
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Block device driver module");
+MODULE_DESCRIPTION("Bio-based block device driver module");
