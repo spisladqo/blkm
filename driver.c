@@ -6,25 +6,25 @@
 #include <linux/blkdev.h>
 #include <linux/module.h>
 
-#define THIS_DEVICE_NAME "sdmy"
-#define THIS_DEVICE_PATH "/dev/sdmy"
+#define THIS_DEVICE_NAME "sdblk"
+#define THIS_DEVICE_PATH "/dev/sdblk"
 
 static struct gendisk *init_disk(sector_t capacity);
-static void sdmy_submit_bio(struct bio *bio);
-static const struct block_device_operations sdmy_fops;
+static void blkm_submit_bio(struct bio *bio);
+static const struct block_device_operations blkm_fops;
 
-static struct block_device_handle {
+static struct blkm_dev {
 	struct bdev_handle *bh;
 	struct gendisk *assoc_disk;
 	char *name;
 	char *path;
 };
 
-static struct block_device_handle *base_handle;
+static struct blkm_dev *base_handle;
 static struct bio_set *bio_pool;
 static int major;
 
-static int __init blkdevm_init(void)
+static int __init blkm_init(void)
 {
 	int err;
 
@@ -53,7 +53,7 @@ static int __init blkdevm_init(void)
 	return 0;
 }
 
-static void __exit blkdevm_exit(void)
+static void __exit blkm_exit(void)
 {
 	if (base_handle) {
 		kfree(base_handle->name);
@@ -198,7 +198,7 @@ static struct gendisk *init_disk(sector_t capacity)
 	disk->first_minor = 1;
 	disk->minors = 1;
 	strcpy(disk->disk_name, THIS_DEVICE_NAME);
-	disk->fops = &sdmy_fops;
+	disk->fops = &blkm_fops;
 
 	pr_warn("requested capacity: %llu\n", capacity);
 	set_capacity(disk, capacity);
@@ -207,7 +207,7 @@ static struct gendisk *init_disk(sector_t capacity)
 	return disk;
 }
 
-static void sdmy_submit_bio(struct bio *bio)
+static void blkm_submit_bio(struct bio *bio)
 {
 	struct bio *new_bio;
 	struct block_device *base_dev;
@@ -230,9 +230,9 @@ static void sdmy_submit_bio(struct bio *bio)
 	bio_endio(bio);
 }
 
-static const struct block_device_operations sdmy_fops = {
+static const struct block_device_operations blkm_fops = {
 	.owner = THIS_MODULE,
-	.submit_bio = sdmy_submit_bio,
+	.submit_bio = blkm_submit_bio,
 };
 
 static int close_base(const char *arg, const struct kernel_param *kp)
@@ -277,8 +277,8 @@ module_param_cb(open, &open_ops, NULL, S_IWUSR);
 MODULE_PARM_DESC(close, "Close base block device");
 module_param_cb(close, &close_ops, NULL, S_IWUSR);
 
-module_init(blkdevm_init);
-module_exit(blkdevm_exit);
+module_init(blkm_init);
+module_exit(blkm_exit);
 
 MODULE_AUTHOR("Vlasenko Daniil <vlasenko.daniil26@gmail.com>");
 MODULE_LICENSE("GPL");
