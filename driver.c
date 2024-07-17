@@ -8,7 +8,7 @@
 
 #define THIS_DEVICE_NAME "sdblk"
 #define THIS_DEVICE_PATH "/dev/sdblk"
-#define MAX_PATH_LEN 16
+#define MAX_PATH_LEN 20
 
 static struct gendisk *init_disk(sector_t capacity);
 static void blkm_submit_bio(struct bio *bio);
@@ -89,6 +89,9 @@ static int base_path_set(const char *arg, const struct kernel_param *kp)
 	}
 
 	len = strcspn(arg, "\n");
+	if (len >= MAX_PATH_LEN)
+		return -ENAMETOOLONG;
+
 	path = kzalloc(sizeof(char) * (len + 1), GFP_KERNEL);
 	if (!path) {
 		pr_err("failed to allocate path\n");
