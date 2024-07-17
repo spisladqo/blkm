@@ -280,6 +280,6 @@ module_param_cb(close, &close_ops, NULL, S_IWUSR);
 module_init(blkm_init);
 module_exit(blkm_exit);
 
-MODULE_AUTHOR("Vlasenko Daniil <vlasenko.daniil26@gmail.com>");
+MODULE_AUTHOR("Vlasenco Daniel <vlasenko.daniil26@gmail.com>");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Block device driver module");
