@@ -36,6 +36,7 @@ static int __init blkdevm_init(void)
 	bio_pool = kzalloc(sizeof(*bio_pool), GFP_KERNEL);
 	if (!bio_pool) {
 		pr_err("failed to allocate bioset\n");
+		unregister_blkdev(major, THIS_DEVICE_NAME);
 		return -ENOMEM;
 	}
 	err = bioset_init(bio_pool, BIO_POOL_SIZE, 0, BIOSET_NEED_BVECS);
@@ -43,6 +44,7 @@ static int __init blkdevm_init(void)
 		pr_err("failed to initialize bioset\n");
 		bioset_exit(bio_pool);
 		kfree(bio_pool);
+		unregister_blkdev(major, THIS_DEVICE_NAME);
 		return err;
 	}
 
@@ -210,8 +212,6 @@ static void sdmy_submit_bio(struct bio *bio)
 	struct bio *new_bio;
 	struct block_device *base_dev;
 
-	pr_warn("received bio\n");
-
 	// when we get here, we should have device opened and disk created
 	BUG_ON(!base_handle);
 	BUG_ON(!base_handle->bh);
@@ -224,13 +224,9 @@ static void sdmy_submit_bio(struct bio *bio)
 		return;
 	}
 
-	pr_warn("bio cloned successfully\n");
-
 	bio_chain(new_bio, bio);
 	submit_bio(new_bio);
 	bio_endio(bio);
-
-	pr_warn("bio redirected successfully\n");
 }
 
 static const struct block_device_operations sdmy_fops = {
