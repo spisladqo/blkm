@@ -1,11 +1,10 @@
 KVER ?= $(shell uname -r)
-LK_BUILD_DIR ?= /lib/modules/$(KVER)/build
-LK_SRC_DIR_RHEL := /usr/src/kernels/$(KVER)
+LK_SRC_DIR := /usr/src/kernels/$(KVER)
 
 all: build
 
 build:
-	$(MAKE) -j -C $(LK_SRC_DIR_RHEL) M=$(PWD) modules
+	$(MAKE) -j -C $(LK_SRC_DIR) M=$(PWD) modules
 
 clean:
-	$(MAKE) -j -C $(LK_SRC_DIR_RHEL) M=$(PWD) clean
+	$(MAKE) -j -C $(LK_SRC_DIR) M=$(PWD) clean
