@@ -105,7 +105,7 @@ static int base_path_get(char *buf, const struct kernel_param *kp)
 	int len;
 
 	if (!base_handle || !base_handle->path) {
-		pr_err("base device path was not set\n");
+		pr_err("path to base device was not set\n");
 		return -EINVAL;
 	}
 	len = snprintf(buf, MAX_PATH_LEN, "%s\n", base_handle->path);
@@ -137,7 +137,7 @@ static int open_base_and_create_disk(const char *arg, const struct kernel_param 
 	bh = bdev_open_by_path(base_handle->path, BLK_OPEN_READ |
 				BLK_OPEN_WRITE, NULL, NULL);
 	if (IS_ERR(bh)) {
-		pr_err("cannot open block device %s\n", base_handle->path);
+		pr_err("cannot open block device '%s'\n", base_handle->path);
 		return PTR_ERR(bh);
 	}
 
@@ -238,7 +238,7 @@ static int close_base(const char *arg, const struct kernel_param *kp)
 	}
 
 	disk_name = base_handle->assoc_disk->disk_name;
-	pr_warn("closing device '%s' and destroying disk %s based on it\n",
+	pr_warn("closing device '%s' and destroying disk '%s' based on it\n",
 			base_handle->path, disk_name);
 
 	bdev_release(base_handle->bh);
