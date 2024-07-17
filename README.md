@@ -16,7 +16,7 @@ Kernel source code is usually located in `/usr/src/` or in `/usr/src/kernels/`. 
 
 ## Build
 
-From repo's directory, run `make`. If you see an error, it can mean that you need to open Makefile and correct your kernel's location.
+From repo's directory, run `make`. If you see an error, it can mean that you need to open Makefile and correct your kernel's location (or name).
 
 To insert module into running kernel, run `insmod blkm.ko`.
 
@@ -29,4 +29,4 @@ Please use it with caution.
 
 ## License
 
-Distributed under the GPL-2.0 License. Pleases see [LICENSE](https://github.com/spisladqo/blkm/blob/main/LICENSE) for more details.
+Distributed under the GPL-2.0 License. Please see [LICENSE](https://github.com/spisladqo/blkm/blob/main/LICENSE) for more details.
