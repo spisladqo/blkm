@@ -199,6 +199,12 @@ static struct gendisk *init_disk(sector_t capacity)
 	return disk;
 }
 
+static void blkm_bio_end_io(struct bio *bio)
+{
+	bio_endio(bio->bi_private);
+	bio_put(bio);
+}
+
 static void blkm_submit_bio(struct bio *bio)
 {
 	struct bio *new_bio;
@@ -217,9 +223,10 @@ static void blkm_submit_bio(struct bio *bio)
 		return;
 	}
 
-	bio_chain(new_bio, bio);
+	new_bio->bi_private = bio;
+	new_bio->bi_end_io = blkm_bio_end_io;
+
 	submit_bio(new_bio);
-	bio_endio(bio);
 }
 
 static const struct block_device_operations blkm_fops = {
