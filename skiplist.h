@@ -38,23 +38,27 @@ static struct skiplist *skiplist_init(void)
 {
 	struct skiplist *sl;
 	struct skiplist_node *head;
+	struct skiplist_node *tail;
 
 	sl = kzalloc(sizeof(*sl), GFP_KERNEL);
-	head = skiplist_create_node(NEG_INF, NULL);
-	if (!sl || !head)
+	head = skiplist_create_node(0l, NULL);
+	tail = skiplist_create_node(INF, NULL);
+	if (!sl || !head || !tail)
 		goto fail;
+
 	sl->head = head;
 	sl->size = 0;
 	sl->max_lvl = 1;
+	head->next = tail;
 
 	return sl;
 
 fail:
 	kfree(sl);
 	kfree(head);
+	kfree(tail);
 	return NULL;
 }
-
 
 static int flip_coin(void)
 {
@@ -71,40 +75,42 @@ static int get_random_lvl(int limit) {
 }
 
 static struct skiplist_node *skiplist_find_first_before(long key,
-				struct skiplist_node *curr_seek_from)
+				struct skiplist_node *seek_from)
 {
 	struct skiplist_node *curr;
-	struct skiplist_node *pred;
+	struct skiplist_node *found;
 
-	pred = NULL;
-	curr = curr_seek_from;
-	while (curr && curr->key < key) {
-		if (!curr->next || curr->next->key >= key)
-			pred = curr;
-
-		curr = curr->next;
+	found = NULL;
+	curr = seek_from;
+	while (curr->key < key && !found) {
+		if (curr->next->key >= key)
+			found = curr;
+		else
+			curr = curr->next;
 	}
 
-	return pred;
+	return found;
 }
 
 static struct skiplist_node *skiplist_find_node(long key,
 					struct skiplist *sl)
 {
+	struct skiplist_node *curr;
 	struct skiplist_node *curr_seek_from;
-	struct skiplist_node *curr_pred;
-	struct skiplist_node *ret;
+	struct skiplist_node *found;
 
-	ret = NULL;
+	found = NULL;
+	curr = NULL;
 	curr_seek_from = sl->head;
-	while (curr_seek_from) {
-		curr_pred = skiplist_find_first_before(key, curr_seek_from);
-		WARN_ON(!curr_pred);
-		if (curr_pred->next && curr_pred->next->key == key)
-			ret = curr_pred->next;
-
-		curr_seek_from = curr_pred->lower;
+	while (!found) {
+		curr = skiplist_find_first_before(key, curr_seek_from);
+		if (curr && curr->next->key == key)
+			found = curr->next;
+		else if (curr && curr->lower)
+			curr_seek_from = curr->lower;
+		else
+			return NULL;
 	}
 
-	return ret;
+	return found;
 }
