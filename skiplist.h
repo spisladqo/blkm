@@ -11,17 +11,17 @@
 static struct skiplist_node {
 	struct skiplist_node *next;
 	struct skiplist_node *lower;
-	long key;
-	long data;
+	unsigned long key;
+	unsigned long data;
 };
 
 static struct skiplist {
 	struct skiplist_node *head;
-	int size;
-	int max_lvl;
+	unsigned int size;
+	unsigned int max_lvl;
 };
 
-static struct skiplist_node *skiplist_create_node(long key, long data)
+static struct skiplist_node *skiplist_create_node(unsigned long key, unsigned long data)
 {
 	struct skiplist_node *node = kzalloc(sizeof(*node), GFP_KERNEL);
 	if (!node)
@@ -47,8 +47,8 @@ static struct skiplist *skiplist_init(void)
 		goto fail;
 
 	sl->head = head;
-	sl->size = 0;
-	sl->max_lvl = 1;
+	sl->size = 0ul;
+	sl->max_lvl = 0ul;
 	head->next = tail;
 
 	return sl;
@@ -65,8 +65,8 @@ static int flip_coin(void)
 	return get_random_u8() % 2;
 }
 
-static int get_random_lvl(int limit) {
-	int lvl = 0;
+static unsigned int get_random_lvl(unsigned int limit) {
+	unsigned int lvl = 0;
 
 	while ((lvl < limit) && flip_coin())
 		lvl++;
@@ -74,8 +74,8 @@ static int get_random_lvl(int limit) {
 	return lvl;
 }
 
-static struct skiplist_node *skiplist_find_first_before(long key,
-				struct skiplist_node *seek_from)
+static struct skiplist_node *skiplist_find_first_before(unsigned long key,
+					struct skiplist_node *seek_from)
 {
 	struct skiplist_node *curr;
 	struct skiplist_node *found;
@@ -92,8 +92,8 @@ static struct skiplist_node *skiplist_find_first_before(long key,
 	return found;
 }
 
-static struct skiplist_node *skiplist_find_node(long key,
-					struct skiplist *sl)
+static struct skiplist_node *skiplist_find_node(unsigned long key,
+						struct skiplist *sl)
 {
 	struct skiplist_node *curr;
 	struct skiplist_node *curr_seek_from;
