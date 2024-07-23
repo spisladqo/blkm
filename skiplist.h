@@ -55,3 +55,18 @@ fail:
 	kfree(head);
 	return NULL;
 }
+
+
+static int flip_coin(void)
+{
+	return get_random_u8() % 2;
+}
+
+static int get_random_lvl(int limit) {
+	int lvl = 0;
+
+	while ((lvl < limit) && flip_coin())
+		lvl++;
+
+	return lvl;
+}
