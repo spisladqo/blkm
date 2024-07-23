@@ -6,8 +6,7 @@
 #include <linux/blkdev.h>
 #include <include/vdso/limits.h>
 
-#define INF LONG_MAX
-#define NEG_INF LONG_MIN
+#define INF ULONG_MAX
 
 static struct skiplist_node {
 	struct skiplist_node *next;
@@ -35,7 +34,7 @@ static struct skiplist_node *skiplist_create_node(long key, long data)
 }
 
 
-static struct skiplist skiplist_init(void)
+static struct skiplist *skiplist_init(void)
 {
 	struct skiplist *sl;
 	struct skiplist_node *head;
@@ -69,4 +68,43 @@ static int get_random_lvl(int limit) {
 		lvl++;
 
 	return lvl;
+}
+
+static struct skiplist_node *skiplist_find_first_before(long key,
+				struct skiplist_node *curr_seek_from)
+{
+	struct skiplist_node *curr;
+	struct skiplist_node *pred;
+
+	pred = NULL;
+	curr = curr_seek_from;
+	while (curr && curr->key < key) {
+		if (!curr->next || curr->next->key >= key)
+			pred = curr;
+
+		curr = curr->next;
+	}
+
+	return pred;
+}
+
+static struct skiplist_node *skiplist_find_node(long key,
+					struct skiplist *sl)
+{
+	struct skiplist_node *curr_seek_from;
+	struct skiplist_node *curr_pred;
+	struct skiplist_node *ret;
+
+	ret = NULL;
+	curr_seek_from = sl->head;
+	while (curr_seek_from) {
+		curr_pred = skiplist_find_first_before(key, curr_seek_from);
+		WARN_ON(!curr_pred);
+		if (curr_pred->next && curr_pred->next->key == key)
+			ret = curr_pred->next;
+
+		curr_seek_from = curr_pred->lower;
+	}
+
+	return ret;
 }
