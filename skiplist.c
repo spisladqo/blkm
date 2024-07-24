@@ -235,13 +235,17 @@ static int skiplist_add(unsigned long key, unsigned long data,
 	struct skiplist_node *new;
 	unsigned int new_lvl;
 	unsigned int curr_lvl;
+	int ret;
 
 	new_lvl = get_random_lvl(sl->max_lvl);
 	new = create_node_of_lvl(key, data, new_lvl);
 	if (!new)
 		return -ENOMEM;
 
-	move_up_if_lvl_nex(sl, new_lvl);
+	ret = move_up_if_lvl_nex(sl, new_lvl);
+	if (ret)
+		return ret;
+
 	curr = sl->head;
 	curr_lvl = sl->lvl;
 
