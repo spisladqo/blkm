@@ -67,14 +67,14 @@ static struct skiplist *skiplist_init(void)
 	struct skiplist_node *tail;
 
 	sl = kzalloc(sizeof(*sl), GFP_KERNEL);
-	head = skiplist_create_node(0l, NULL);
+	head = skiplist_create_node(0, NULL);
 	tail = skiplist_create_node(INF, NULL);
 	if (!sl || !head || !tail)
 		goto fail;
 
 	sl->head = head;
-	sl->size = 0ul;
-	sl->max_lvl = 0ul;
+	sl->size = 0;
+	sl->max_lvl = 0;
 	head->next = tail;
 
 	return sl;
