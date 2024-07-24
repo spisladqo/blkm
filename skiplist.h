@@ -148,3 +148,55 @@ static struct skiplist_node *skiplist_find_node(unsigned long key,
 
 	return found;
 }
+
+
+static int skiplist_move_lvls_up(struct skiplist *sl, unsigned int lvls_up)
+{
+	struct skiplist_node *head_ext;
+	struct skiplist_node *tail_ext;
+	struct skiplist_node *curr;
+	struct skiplist_node *temp;
+
+	head_ext = skiplist_create_node_lvl(HEAD_KEY, HEAD_DATA, lvls_up);
+	tail_ext = skiplist_create_node_lvl(TAIL_KEY, TAIL_DATA, lvls_up);
+	if (!head_ext || !tail_ext)
+		goto alloc_fail;
+
+	curr = head_ext;
+	temp = tail_ext;
+	while (curr->lower && temp->lower) {
+		curr->next = temp;
+		curr = curr->lower;
+		temp = temp->lower;
+	}
+
+	curr->lower = sl->head;
+	temp->lower = skiplist_find_node(TAIL_KEY, sl);
+	sl->head = head_ext;
+
+	return 0;
+
+alloc_fail:
+	skiplist_free_node_full(head_ext);
+	skiplist_free_node_full(tail_ext);
+	
+	return -ENOMEM;
+}
+
+static int skiplist_lvl_add_ifnex(struct skiplist *sl, unsigned int lvl)
+{
+	unsigned int diff;
+	int ret;
+
+	if (lvl <= sl->head_lvl || lvl > sl->max_lvl) {
+		return 0;
+	}
+
+	diff = lvl - sl->head_lvl;
+	ret = skiplist_move_lvls_up(sl, diff);
+	if (ret)
+		return ret;
+	sl->head_lvl = lvl;
+
+	return 0;
+}
