@@ -17,9 +17,19 @@ static struct skiplist_node {
 
 static struct skiplist {
 	struct skiplist_node *head;
-	unsigned int size;
+	unsigned int head_lvl;
 	unsigned int max_lvl;
 };
+
+static void skiplist_free_node_full(struct skiplist_node *node)
+{
+	struct skiplist_node *temp;
+	while (node) {
+		temp = node->lower;
+		kfree(node);
+		node = temp;
+	}
+}
 
 static struct skiplist_node *skiplist_create_node_lvl(unsigned long key,
 				unsigned long data, unsigned int lvl)
@@ -44,12 +54,7 @@ static struct skiplist_node *skiplist_create_node_lvl(unsigned long key,
 	return curr;
 
 alloc_fail:
-	curr = last;
-	while (curr) {
-		temp = curr->lower;
-		kfree(curr);
-		curr = temp;
-	}
+	skiplist_free_node_full(curr);
 
 	return NULL;
 }
@@ -70,16 +75,16 @@ static struct skiplist *skiplist_init(void)
 	head = skiplist_create_node(0, NULL);
 	tail = skiplist_create_node(INF, NULL);
 	if (!sl || !head || !tail)
-		goto fail;
+		goto alloc_fail;
 
 	sl->head = head;
-	sl->size = 0;
-	sl->max_lvl = 0;
+	sl->head_lvl = 0;
+	sl->max_lvl = 24;
 	head->next = tail;
 
 	return sl;
 
-fail:
+alloc_fail:
 	kfree(sl);
 	kfree(head);
 	kfree(tail);
@@ -91,10 +96,10 @@ static int flip_coin(void)
 	return get_random_u8() % 2;
 }
 
-static unsigned int get_random_lvl(unsigned int limit) {
+static unsigned int get_random_lvl(unsigned int max) {
 	unsigned int lvl = 0;
 
-	while ((lvl < limit) && flip_coin())
+	while ((lvl < max) && flip_coin())
 		lvl++;
 
 	return lvl;
