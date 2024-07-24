@@ -24,7 +24,7 @@ static struct skiplist {
 	unsigned int max_lvl;
 };
 
-static void skiplist_free_node_full(struct skiplist_node *node)
+static void free_node_full(struct skiplist_node *node)
 {
 	struct skiplist_node *temp;
 	while (node) {
@@ -34,7 +34,7 @@ static void skiplist_free_node_full(struct skiplist_node *node)
 	}
 }
 
-static struct skiplist_node *skiplist_create_node_lvl(unsigned long key,
+static struct skiplist_node *create_node_of_lvl(unsigned long key,
 				unsigned long data, unsigned int lvl)
 {
 	struct skiplist_node *last;
@@ -57,15 +57,15 @@ static struct skiplist_node *skiplist_create_node_lvl(unsigned long key,
 	return curr;
 
 alloc_fail:
-	skiplist_free_node_full(curr);
+	free_node_full(curr);
 
 	return NULL;
 }
 
-static struct skiplist_node *skiplist_create_node(unsigned long key,
-						unsigned long data)
+static struct skiplist_node *create_node(unsigned long key,
+					unsigned long data)
 {
-	return skiplist_create_node_lvl(key, data, 0);
+	return create_node_of_lvl(key, data, 0);
 }
 
 static struct skiplist *skiplist_init(void)
@@ -75,8 +75,8 @@ static struct skiplist *skiplist_init(void)
 	struct skiplist_node *tail;
 
 	sl = kzalloc(sizeof(*sl), GFP_KERNEL);
-	head = skiplist_create_node(HEAD_KEY, HEAD_DATA);
-	tail = skiplist_create_node(TAIL_KEY, TAIL_DATA);
+	head = create_node(HEAD_KEY, HEAD_DATA);
+	tail = create_node(TAIL_KEY, TAIL_DATA);
 	if (!sl || !head || !tail)
 		goto alloc_fail;
 
@@ -108,7 +108,7 @@ static unsigned int get_random_lvl(unsigned int max) {
 	return lvl;
 }
 
-static struct skiplist_node *skiplist_find_pred_same_lvl(unsigned long key,
+static struct skiplist_node *find_same_lvl_pred(unsigned long key,
 					struct skiplist_node *seek_from)
 {
 	struct skiplist_node *curr;
@@ -126,8 +126,8 @@ static struct skiplist_node *skiplist_find_pred_same_lvl(unsigned long key,
 	return found;
 }
 
-static struct skiplist_node *skiplist_find_node_pred(unsigned long key,
-						struct skiplist *sl)
+static struct skiplist_node *find_pred(unsigned long key,
+					struct skiplist *sl)
 {
 	struct skiplist_node *curr;
 	struct skiplist_node *curr_seek_from;
@@ -137,7 +137,7 @@ static struct skiplist_node *skiplist_find_node_pred(unsigned long key,
 	curr = NULL;
 	curr_seek_from = sl->head;
 	while (!found) {
-		curr = skiplist_find_pred_same_lvl(key, curr_seek_from);
+		curr = find_same_lvl_pred(key, curr_seek_from);
 		if (curr && curr->next->key == key)
 			found = curr;
 		else if (curr && curr->lower)
@@ -152,22 +152,22 @@ static struct skiplist_node *skiplist_find_node_pred(unsigned long key,
 static struct skiplist_node *skiplist_find_node(unsigned long key,
 						struct skiplist *sl)
 {
-	struct skiplist_node *pred = skiplist_find_node_pred(key, sl);
+	struct skiplist_node *pred = find_pred(key, sl);
 	if (!pred)
 		return NULL;
 	
 	return pred->next;
 }
 
-static int skiplist_move_lvls_up(struct skiplist *sl, unsigned int lvls_up)
+static int move_head_and_tail_up(struct skiplist *sl, unsigned int lvls_up)
 {
 	struct skiplist_node *head_ext;
 	struct skiplist_node *tail_ext;
 	struct skiplist_node *curr;
 	struct skiplist_node *temp;
 
-	head_ext = skiplist_create_node_lvl(HEAD_KEY, HEAD_DATA, lvls_up);
-	tail_ext = skiplist_create_node_lvl(TAIL_KEY, TAIL_DATA, lvls_up);
+	head_ext = create_node_of_lvl(HEAD_KEY, HEAD_DATA, lvls_up);
+	tail_ext = create_node_of_lvl(TAIL_KEY, TAIL_DATA, lvls_up);
 	if (!head_ext || !tail_ext)
 		goto alloc_fail;
 
@@ -186,13 +186,13 @@ static int skiplist_move_lvls_up(struct skiplist *sl, unsigned int lvls_up)
 	return 0;
 
 alloc_fail:
-	skiplist_free_node_full(head_ext);
-	skiplist_free_node_full(tail_ext);
+	free_node_full(head_ext);
+	free_node_full(tail_ext);
 	
 	return -ENOMEM;
 }
 
-static int skiplist_lvl_add_ifnex(struct skiplist *sl, unsigned int lvl)
+static int move_up_if_lvl_nex(struct skiplist *sl, unsigned int lvl)
 {
 	unsigned int diff;
 	int ret;
@@ -202,7 +202,7 @@ static int skiplist_lvl_add_ifnex(struct skiplist *sl, unsigned int lvl)
 	}
 
 	diff = lvl - sl->head_lvl;
-	ret = skiplist_move_lvls_up(sl, diff);
+	ret = move_head_and_tail_up(sl, diff);
 	if (ret)
 		return ret;
 	sl->head_lvl = lvl;
@@ -222,16 +222,16 @@ static int skiplist_add(unsigned long key, unsigned long data,
 	unsigned int curr_lvl;
 
 	new_lvl = get_random_lvl(sl->max_lvl);
-	new = skiplist_create_node_lvl(key, data, new_lvl);
+	new = create_node_of_lvl(key, data, new_lvl);
 	if (!new)
 		return -ENOMEM;
 
-	skiplist_lvl_add_ifnex(sl, new_lvl);
+	move_up_if_lvl_nex(sl, new_lvl);
 	curr = sl->head;
 	curr_lvl = sl->lvl;
 
 	while (curr) {
-		curr = skiplist_find_pred_same_lvl(key, curr);
+		curr = find_same_lvl_pred(key, curr);
 		if (!curr)
 			return -EINVAL;
 
