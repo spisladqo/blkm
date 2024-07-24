@@ -108,7 +108,7 @@ static unsigned int get_random_lvl(unsigned int max) {
 	return lvl;
 }
 
-static struct skiplist_node *skiplist_find_first_before_key(unsigned long key,
+static struct skiplist_node *skiplist_find_pred_same_lvl(unsigned long key,
 					struct skiplist_node *seek_from)
 {
 	struct skiplist_node *curr;
@@ -126,7 +126,7 @@ static struct skiplist_node *skiplist_find_first_before_key(unsigned long key,
 	return found;
 }
 
-static struct skiplist_node *skiplist_find_node(unsigned long key,
+static struct skiplist_node *skiplist_find_node_pred(unsigned long key,
 						struct skiplist *sl)
 {
 	struct skiplist_node *curr;
@@ -137,9 +137,9 @@ static struct skiplist_node *skiplist_find_node(unsigned long key,
 	curr = NULL;
 	curr_seek_from = sl->head;
 	while (!found) {
-		curr = skiplist_find_first_before_key(key, curr_seek_from);
+		curr = skiplist_find_pred_same_lvl(key, curr_seek_from);
 		if (curr && curr->next->key == key)
-			found = curr->next;
+			found = curr;
 		else if (curr && curr->lower)
 			curr_seek_from = curr->lower;
 		else
@@ -149,6 +149,15 @@ static struct skiplist_node *skiplist_find_node(unsigned long key,
 	return found;
 }
 
+static struct skiplist_node *skiplist_find_node(unsigned long key,
+						struct skiplist *sl)
+{
+	struct skiplist_node *pred = skiplist_find_node_pred(key, sl);
+	if (!pred)
+		return NULL;
+	
+	return pred->next;
+}
 
 static int skiplist_move_lvls_up(struct skiplist *sl, unsigned int lvls_up)
 {
@@ -222,7 +231,7 @@ static int skiplist_add(unsigned long key, unsigned long data,
 	curr_lvl = sl->lvl;
 
 	while (curr) {
-		curr = skiplist_find_first_before_key(key, curr);
+		curr = skiplist_find_pred_same_lvl(key, curr);
 		if (!curr)
 			return -EINVAL;
 
