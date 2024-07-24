@@ -243,9 +243,10 @@ static int skiplist_add(unsigned long key, unsigned long data,
 		return -ENOMEM;
 
 	ret = move_up_if_lvl_nex(sl, new_lvl);
-	if (ret)
+	if (ret) {
+		free_node_full(new);
 		return ret;
-
+	}
 	curr = sl->head;
 	curr_lvl = sl->lvl;
 
