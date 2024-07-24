@@ -27,6 +27,7 @@ static struct skiplist {
 static void free_node_full(struct skiplist_node *node)
 {
 	struct skiplist_node *temp;
+
 	while (node) {
 		temp = node->lower;
 		kfree(node);
@@ -108,7 +109,7 @@ static unsigned int get_random_lvl(unsigned int max) {
 	return lvl;
 }
 
-static struct skiplist_node *find_same_lvl_pred(unsigned long key,
+static struct skiplist_node *find_same_lvl_pred_soft(unsigned long key,
 					struct skiplist_node *seek_from)
 {
 	struct skiplist_node *curr;
@@ -126,7 +127,7 @@ static struct skiplist_node *find_same_lvl_pred(unsigned long key,
 	return found;
 }
 
-static struct skiplist_node *find_pred(unsigned long key,
+static struct skiplist_node *find_pred_soft(unsigned long key,
 					struct skiplist *sl)
 {
 	struct skiplist_node *curr;
@@ -137,8 +138,8 @@ static struct skiplist_node *find_pred(unsigned long key,
 	curr = NULL;
 	curr_seek_from = sl->head;
 	while (!found) {
-		curr = find_same_lvl_pred(key, curr_seek_from);
-		if (curr && curr->next->key == key)
+		curr = find_same_lvl_pred_soft(key, curr_seek_from);
+		if (curr && curr->next->key >= key)
 			found = curr;
 		else if (curr && curr->lower)
 			curr_seek_from = curr->lower;
@@ -149,14 +150,28 @@ static struct skiplist_node *find_pred(unsigned long key,
 	return found;
 }
 
+static struct skiplist_node *find_pred_strict(unsigned long key,
+					struct skiplist *sl)
+{
+	struct skiplist_node *found;
+
+	found = find_pred_soft(key, sl);
+	if (!found || found->next->key != key)
+		return NULL;
+
+	return found;
+}
+
 static struct skiplist_node *skiplist_find_node(unsigned long key,
 						struct skiplist *sl)
 {
-	struct skiplist_node *pred = find_pred(key, sl);
-	if (!pred)
+	struct skiplist_node *found;
+
+	found = find_pred_strict(key, sl);
+	if (!found)
 		return NULL;
 	
-	return pred->next;
+	return found->next;
 }
 
 static int move_head_and_tail_up(struct skiplist *sl, unsigned int lvls_up)
@@ -231,7 +246,7 @@ static int skiplist_add(unsigned long key, unsigned long data,
 	curr_lvl = sl->lvl;
 
 	while (curr) {
-		curr = find_same_lvl_pred(key, curr);
+		curr = find_same_lvl_pred_soft(key, curr);
 		if (!curr)
 			return -EINVAL;
 
