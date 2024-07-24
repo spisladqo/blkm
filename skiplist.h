@@ -200,3 +200,41 @@ static int skiplist_lvl_add_ifnex(struct skiplist *sl, unsigned int lvl)
 
 	return 0;
 }
+
+/*
+ * does not work when trying to add existing key yet
+ */
+static int skiplist_add(unsigned long key, unsigned long data,
+					struct skiplist *sl)
+{
+	struct skiplist_node *curr;
+	struct skiplist_node *new;
+	unsigned int new_lvl;
+	unsigned int curr_lvl;
+
+	new_lvl = get_random_lvl(sl->max_lvl);
+	new = skiplist_create_node_lvl(key, data, new_lvl);
+	if (!new)
+		return -ENOMEM;
+
+	skiplist_lvl_add_ifnex(sl, new_lvl);
+	curr = sl->head;
+	curr_lvl = sl->lvl;
+
+	while (curr) {
+		curr = skiplist_find_first_before_key(key, curr);
+		if (!curr)
+			return -EINVAL;
+
+		if (curr_lvl <= new_lvl) {
+			new->next = curr->next;
+			curr->next = new;
+			new = new->lower;
+		}
+
+		curr = curr->lower;
+		curr_lvl--;
+	}
+
+	return 0;
+}
