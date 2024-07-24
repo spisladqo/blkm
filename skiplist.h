@@ -6,7 +6,10 @@
 #include <linux/blkdev.h>
 #include <include/vdso/limits.h>
 
-#define INF ULONG_MAX
+#define HEAD_KEY 0UL
+#define HEAD_DATA 0UL
+#define TAIL_KEY ULONG_MAX
+#define TAIL_DATA ULONG_MAX
 
 static struct skiplist_node {
 	struct skiplist_node *next;
@@ -72,8 +75,8 @@ static struct skiplist *skiplist_init(void)
 	struct skiplist_node *tail;
 
 	sl = kzalloc(sizeof(*sl), GFP_KERNEL);
-	head = skiplist_create_node(0, NULL);
-	tail = skiplist_create_node(INF, NULL);
+	head = skiplist_create_node(HEAD_KEY, HEAD_DATA);
+	tail = skiplist_create_node(TAIL_KEY, TAIL_DATA);
 	if (!sl || !head || !tail)
 		goto alloc_fail;
 
