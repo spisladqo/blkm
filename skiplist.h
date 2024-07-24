@@ -21,18 +21,44 @@ static struct skiplist {
 	unsigned int max_lvl;
 };
 
-static struct skiplist_node *skiplist_create_node(unsigned long key, unsigned long data)
+static struct skiplist_node *skiplist_create_node_lvl(unsigned long key,
+				unsigned long data, unsigned int lvl)
 {
-	struct skiplist_node *node = kzalloc(sizeof(*node), GFP_KERNEL);
-	if (!node)
-		return NULL;
+	struct skiplist_node *last;
+	struct skiplist_node *curr;
+	struct skiplist_node *temp;
+	unsigned int curr_lvl;
 
-	node->key = key;
-	node->data = data;
+	last = NULL;
+	for (curr_lvl = 0; curr_lvl <= lvl; ++curr_lvl) {
+		curr = kzalloc(sizeof(*curr), GFP_KERNEL);
+		if (!curr)
+			goto alloc_fail;
 
-	return node;
+		curr->key = key;
+		curr->data = data;
+		curr->lower = last;
+		last = curr;
+	}
+
+	return curr;
+
+alloc_fail:
+	curr = last;
+	while (curr) {
+		temp = curr->lower;
+		kfree(curr);
+		curr = temp;
+	}
+
+	return NULL;
 }
 
+static struct skiplist_node *skiplist_create_node(unsigned long key,
+						unsigned long data)
+{
+	return skiplist_create_node_lvl(key, data, 0);
+}
 
 static struct skiplist *skiplist_init(void)
 {
@@ -74,7 +100,7 @@ static unsigned int get_random_lvl(unsigned int limit) {
 	return lvl;
 }
 
-static struct skiplist_node *skiplist_find_first_before(unsigned long key,
+static struct skiplist_node *skiplist_find_first_before_key(unsigned long key,
 					struct skiplist_node *seek_from)
 {
 	struct skiplist_node *curr;
@@ -103,7 +129,7 @@ static struct skiplist_node *skiplist_find_node(unsigned long key,
 	curr = NULL;
 	curr_seek_from = sl->head;
 	while (!found) {
-		curr = skiplist_find_first_before(key, curr_seek_from);
+		curr = skiplist_find_first_before_key(key, curr_seek_from);
 		if (curr && curr->next->key == key)
 			found = curr->next;
 		else if (curr && curr->lower)
