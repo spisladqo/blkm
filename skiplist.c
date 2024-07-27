@@ -3,22 +3,23 @@
  * Skiplist implementation by: Daniel Vlasenco
  */
 
+#include "blkm.h"
 #include <linux/blkdev.h>
-#include <include/vdso/limits.h>
+#include <vdso/limits.h>
 
 #define HEAD_KEY 0UL
 #define HEAD_DATA 0UL
 #define TAIL_KEY ULONG_MAX
 #define TAIL_DATA ULONG_MAX
 
-static struct skiplist_node {
+struct skiplist_node {
 	struct skiplist_node *next;
 	struct skiplist_node *lower;
 	unsigned long key;
 	unsigned long data;
 };
 
-static struct skiplist {
+ struct skiplist {
 	struct skiplist_node *head;
 	unsigned int head_lvl;
 	unsigned int max_lvl;
@@ -40,7 +41,6 @@ static struct skiplist_node *create_node_of_lvl(unsigned long key,
 {
 	struct skiplist_node *last;
 	struct skiplist_node *curr;
-	struct skiplist_node *temp;
 	unsigned int curr_lvl;
 
 	last = NULL;
@@ -69,7 +69,7 @@ static struct skiplist_node *create_node(unsigned long key,
 	return create_node_of_lvl(key, data, 0);
 }
 
-static struct skiplist *skiplist_init(void)
+struct skiplist *skiplist_init(void)
 {
 	struct skiplist *sl;
 	struct skiplist_node *head;
@@ -162,7 +162,7 @@ static struct skiplist_node *find_pred_strict(unsigned long key,
 	return found;
 }
 
-static struct skiplist_node *skiplist_find_node(unsigned long key,
+struct skiplist_node *skiplist_find_node(unsigned long key,
 						struct skiplist *sl)
 {
 	struct skiplist_node *found;
@@ -228,7 +228,7 @@ static int move_up_if_lvl_nex(struct skiplist *sl, unsigned int lvl)
 /*
  * does not work when trying to add existing key yet
  */
-static int skiplist_add(unsigned long key, unsigned long data,
+int skiplist_add(unsigned long key, unsigned long data,
 					struct skiplist *sl)
 {
 	struct skiplist_node *curr;
@@ -248,7 +248,7 @@ static int skiplist_add(unsigned long key, unsigned long data,
 		return ret;
 	}
 	curr = sl->head;
-	curr_lvl = sl->lvl;
+	curr_lvl = sl->head_lvl;
 
 	while (curr) {
 		curr = find_same_lvl_pred_soft(key, curr);
