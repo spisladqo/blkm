@@ -4,22 +4,22 @@
  */
 
 #include "blkm.h"
-#include <linux/blkdev.h>
 #include <vdso/limits.h>
 
-#define HEAD_KEY 0UL
-#define HEAD_DATA 0UL
-#define TAIL_KEY ULONG_MAX
-#define TAIL_DATA ULONG_MAX
+#define HEAD_KEY ((sector_t)0)
+#define HEAD_DATA ((sector_t)ULONG_MAX)
+#define TAIL_KEY ((sector_t)ULONG_MAX)
+#define TAIL_DATA ((sector_t)0)
+#define MAX_LVL 20
 
 struct skiplist_node {
 	struct skiplist_node *next;
 	struct skiplist_node *lower;
-	unsigned long key;
-	unsigned long data;
+	sector_t key;
+	sector_t data;
 };
 
- struct skiplist {
+struct skiplist {
 	struct skiplist_node *head;
 	unsigned int head_lvl;
 	unsigned int max_lvl;
@@ -36,8 +36,8 @@ static void free_node_full(struct skiplist_node *node)
 	}
 }
 
-static struct skiplist_node *create_node_of_lvl(unsigned long key,
-				unsigned long data, unsigned int lvl)
+static struct skiplist_node *create_node_of_lvl(sector_t key, sector_t data,
+							unsigned int lvl)
 {
 	struct skiplist_node *last;
 	struct skiplist_node *curr;
@@ -63,8 +63,7 @@ alloc_fail:
 	return NULL;
 }
 
-static struct skiplist_node *create_node(unsigned long key,
-					unsigned long data)
+static struct skiplist_node *create_node(sector_t key, sector_t data)
 {
 	return create_node_of_lvl(key, data, 0);
 }
@@ -83,7 +82,7 @@ struct skiplist *skiplist_init(void)
 
 	sl->head = head;
 	sl->head_lvl = 0;
-	sl->max_lvl = 24;
+	sl->max_lvl = MAX_LVL;
 	head->next = tail;
 
 	return sl;
@@ -109,15 +108,15 @@ static unsigned int get_random_lvl(unsigned int max) {
 	return lvl;
 }
 
-static struct skiplist_node *find_same_lvl_pred_soft(unsigned long key,
-					struct skiplist_node *seek_from)
+static struct skiplist_node *find_same_lvl_pred_soft(sector_t key,
+				struct skiplist_node *seek_from)
 {
 	struct skiplist_node *curr;
 	struct skiplist_node *found;
 
 	found = NULL;
 	curr = seek_from;
-	while (curr->key < key && !found) {
+	while (curr && !found) {
 		if (curr->next->key >= key)
 			found = curr;
 		else
@@ -127,8 +126,7 @@ static struct skiplist_node *find_same_lvl_pred_soft(unsigned long key,
 	return found;
 }
 
-static struct skiplist_node *find_pred_soft(unsigned long key,
-					struct skiplist *sl)
+static struct skiplist_node *find_pred_soft(sector_t key, struct skiplist *sl)
 {
 	struct skiplist_node *curr;
 	struct skiplist_node *curr_seek_from;
@@ -150,8 +148,7 @@ static struct skiplist_node *find_pred_soft(unsigned long key,
 	return found;
 }
 
-static struct skiplist_node *find_pred_strict(unsigned long key,
-					struct skiplist *sl)
+static struct skiplist_node *find_pred_strict(sector_t key, struct skiplist *sl)
 {
 	struct skiplist_node *found;
 
@@ -162,8 +159,7 @@ static struct skiplist_node *find_pred_strict(unsigned long key,
 	return found;
 }
 
-struct skiplist_node *skiplist_find_node(unsigned long key,
-						struct skiplist *sl)
+struct skiplist_node *skiplist_find_node(sector_t key, struct skiplist *sl)
 {
 	struct skiplist_node *found;
 
@@ -228,8 +224,7 @@ static int move_up_if_lvl_nex(struct skiplist *sl, unsigned int lvl)
 /*
  * does not work when trying to add existing key yet
  */
-int skiplist_add(unsigned long key, unsigned long data,
-					struct skiplist *sl)
+int skiplist_add(sector_t key, sector_t data, struct skiplist *sl)
 {
 	struct skiplist_node *curr;
 	struct skiplist_node *new;
@@ -266,4 +261,37 @@ int skiplist_add(unsigned long key, unsigned long data,
 	}
 
 	return 0;
+}
+
+void skiplist_free(struct skiplist *sl)
+{
+	struct skiplist_node *curr;
+	struct skiplist_node *next;
+	struct skiplist_node *tofree;
+	struct skiplist_node *tofree_stack[MAX_LVL + 1];
+	int stack_i;
+
+	stack_i = 0;
+	tofree_stack[stack_i++] = sl->head;
+
+	while (stack_i > 0 && tofree_stack[stack_i]) {
+		tofree = tofree_stack[stack_i];
+
+		curr = tofree;
+		while (curr) {
+			next = curr->next;
+			if (!next)
+				break;
+
+			if (next->key < tofree_stack[stack_i]->key)
+				tofree_stack[++stack_i] = next;
+
+			curr = curr->lower;
+		}
+
+		free_node_full(tofree);
+		tofree_stack[stack_i--] = NULL;
+	}
+
+	kfree(sl);
 }
