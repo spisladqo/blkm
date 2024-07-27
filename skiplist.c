@@ -267,30 +267,3 @@ int skiplist_add(unsigned long key, unsigned long data,
 
 	return 0;
 }
-
-static int skiplist_del(unsigned long key, struct skiplist *sl)
-{
-	struct skiplist_node *target;
-	struct skiplist_node *curr;
-	struct skiplist_node *curr_to_del;
-
-	curr = find_pred_strict(key, sl);
-	if (!curr)
-		return -EINVAL;
-
-	target = curr->next;
-	curr_to_del = target;
-	while (curr) {
-		curr = find_same_lvl_pred_soft(key, curr);
-		if (!curr)
-			return -EINVAL;
-
-		curr->next = curr_to_del->next;
-		curr = curr->lower;
-		curr_to_del = curr_to_del->lower;
-	}
-
-	free_node_full(target);
-
-	return 0;
-}
