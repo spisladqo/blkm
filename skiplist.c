@@ -180,14 +180,6 @@ static int get_random_lvl(int max) {
 	return lvl;
 }
 
-static void replace_data(struct skiplist_node *node, sector_t data)
-{
-	while (node) {
-		node->data = data;
-		node = node->lower;
-	}
-}
-
 struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 					struct skiplist *sl)
 {
