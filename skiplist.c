@@ -21,8 +21,8 @@ struct skiplist_node {
 
 struct skiplist {
 	struct skiplist_node *head;
-	unsigned int head_lvl;
-	unsigned int max_lvl;
+	int head_lvl;
+	int max_lvl;
 };
 
 static void free_node_full(struct skiplist_node *node)
@@ -37,11 +37,11 @@ static void free_node_full(struct skiplist_node *node)
 }
 
 static struct skiplist_node *create_node_of_lvl(sector_t key, sector_t data,
-							unsigned int lvl)
+							int lvl)
 {
 	struct skiplist_node *last;
 	struct skiplist_node *curr;
-	unsigned int curr_lvl;
+	int curr_lvl;
 
 	last = NULL;
 	for (curr_lvl = 0; curr_lvl <= lvl; ++curr_lvl) {
@@ -94,83 +94,42 @@ alloc_fail:
 	return NULL;
 }
 
-static int flip_coin(void)
-{
-	return get_random_u8() % 2;
-}
-
-static unsigned int get_random_lvl(unsigned int max) {
-	unsigned int lvl = 0;
-
-	while ((lvl < max) && flip_coin())
-		lvl++;
-
-	return lvl;
-}
-
-static struct skiplist_node *find_same_lvl_pred_soft(sector_t key,
-				struct skiplist_node *seek_from)
+static int get_prev_nodes(sector_t key, struct skiplist *sl,
+			struct skiplist_node *buf, int lvl)
 {
 	struct skiplist_node *curr;
-	struct skiplist_node *found;
+	int lvls_passed;
 
-	found = NULL;
-	curr = seek_from;
-	while (curr && !found) {
-		if (curr->next->key >= key)
-			found = curr;
-		else
+	lvls_passed = 0;
+	curr = sl->head;
+	while (curr && lvls_passed < lvl) {
+		if (curr->next->key < key || curr->data != HEAD_DATA) {
 			curr = curr->next;
+		} else {
+			buf[lvl-lvls_passed-1] = curr;
+			++lvls_passed;
+			curr = curr->lower;
+		}
 	}
-
-	return found;
-}
-
-static struct skiplist_node *find_pred_soft(sector_t key, struct skiplist *sl)
-{
-	struct skiplist_node *curr;
-	struct skiplist_node *curr_seek_from;
-	struct skiplist_node *found;
-
-	found = NULL;
-	curr = NULL;
-	curr_seek_from = sl->head;
-	while (!found) {
-		curr = find_same_lvl_pred_soft(key, curr_seek_from);
-		if (curr && curr->next->key >= key)
-			found = curr;
-		else if (curr && curr->lower)
-			curr_seek_from = curr->lower;
-		else
-			return NULL;
-	}
-
-	return found;
-}
-
-static struct skiplist_node *find_pred_strict(sector_t key, struct skiplist *sl)
-{
-	struct skiplist_node *found;
-
-	found = find_pred_soft(key, sl);
-	if (!found || found->next->key != key)
-		return NULL;
-
-	return found;
 }
 
 struct skiplist_node *skiplist_find_node(sector_t key, struct skiplist *sl)
 {
-	struct skiplist_node *found;
+	struct skiplist_node *curr = sl->head;
 
-	found = find_pred_strict(key, sl);
-	if (!found)
-		return NULL;
-	
-	return found->next;
+	while (curr) {
+		if (curr->next->key == key)
+			return curr->next;
+		else if (curr->next->key < key)
+			curr = curr->next;
+		else
+			curr = curr->lower;
+	}
+
+	return NULL;
 }
 
-static int move_head_and_tail_up(struct skiplist *sl, unsigned int lvls_up)
+static int move_head_and_tail_up(struct skiplist *sl, int lvls_up)
 {
 	struct skiplist_node *head_ext;
 	struct skiplist_node *tail_ext;
@@ -203,7 +162,7 @@ alloc_fail:
 	return -ENOMEM;
 }
 
-static int move_up_if_lvl_nex(struct skiplist *sl, unsigned int lvl)
+static int move_up_if_lvl_nex(struct skiplist *sl, int lvl)
 {
 	unsigned int diff;
 	int ret;
@@ -221,46 +180,59 @@ static int move_up_if_lvl_nex(struct skiplist *sl, unsigned int lvl)
 	return 0;
 }
 
-/*
- * does not work when trying to add existing key yet
- */
-int skiplist_add(sector_t key, sector_t data, struct skiplist *sl)
+static int flip_coin(void)
 {
-	struct skiplist_node *curr;
+	return get_random_u8() % 2;
+}
+
+static int get_random_lvl(int max) {
+	int lvl = 0;
+
+	while ((lvl < max) && flip_coin())
+		lvl++;
+
+	return lvl;
+}
+
+static void replace_data(struct skiplist_node *node, sector_t data)
+{
+	while (node) {
+		node->data = data;
+		node = node->lower;
+	}
+}
+
+struct skiplist_node *skiplist_add(sector_t key, sector_t data,
+					struct skiplist *sl)
+{
+	struct skiplist_node *prev[sl->max_lvl+1];
+	struct skiplist_node *old;
 	struct skiplist_node *new;
-	unsigned int new_lvl;
-	unsigned int curr_lvl;
+	int lvl;
 	int ret;
+	int i;
 
-	new_lvl = get_random_lvl(sl->max_lvl);
-	new = create_node_of_lvl(key, data, new_lvl);
-	if (!new)
-		return -ENOMEM;
-
-	ret = move_up_if_lvl_nex(sl, new_lvl);
-	if (ret) {
-		free_node_full(new);
-		return ret;
-	}
-	curr = sl->head;
-	curr_lvl = sl->head_lvl;
-
-	while (curr) {
-		curr = find_same_lvl_pred_soft(key, curr);
-		if (!curr)
-			return -EINVAL;
-
-		if (curr_lvl <= new_lvl) {
-			new->next = curr->next;
-			curr->next = new;
-			new = new->lower;
-		}
-
-		curr = curr->lower;
-		curr_lvl--;
+	old = skiplist_find_node(key, sl);
+	if (old) {
+		replace_data(old, data);
+		return old;
 	}
 
-	return 0;
+	lvl = get_random_lvl(sl->max_lvl);
+	ret = move_up_if_lvl_nex(sl, lvl);
+	if (ret)
+		return ERR_PTR(ret);
+
+	get_prev_nodes(key, sl, prev, lvl);
+	for (i = 0; i <= lvl; ++i) {
+		new = create_node(key, data);
+		if (!new)
+			break;
+		new->next = prev[i]->next;
+		prev[i]->next = new;
+	}
+
+	return new;
 }
 
 void skiplist_free(struct skiplist *sl)
