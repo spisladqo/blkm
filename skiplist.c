@@ -94,8 +94,8 @@ alloc_fail:
 	return NULL;
 }
 
-static int get_prev_nodes(sector_t key, struct skiplist *sl,
-			struct skiplist_node *buf, int lvl)
+static void get_prev_nodes(sector_t key, struct skiplist *sl,
+			struct skiplist_node **buf, int lvl)
 {
 	struct skiplist_node *curr;
 	int lvls_passed;
