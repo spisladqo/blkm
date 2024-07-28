@@ -194,6 +194,47 @@ static int get_random_lvl(int max) {
 	return lvl;
 }
 
+static void replace_data(struct skiplist_node *node, sector_t data)
+{
+	while (node) {
+		node->data = data;
+		node = node->lower;
+	}
+}
+
+struct skiplist_node *skiplist_add(sector_t key, sector_t data,
+					struct skiplist *sl)
+{
+	struct skiplist_node *prev[sl->max_lvl+1];
+	struct skiplist_node *old;
+	struct skiplist_node *new;
+	int lvl;
+	int ret;
+	int i;
+
+	old = skiplist_find_node(key, sl);
+	if (old) {
+		replace_data(old, data);
+		return old;
+	}
+
+	lvl = get_random_lvl(sl->max_lvl);
+	ret = move_up_if_lvl_nex(sl, lvl);
+	if (ret)
+		return ERR_PTR(ret);
+
+	get_prev_nodes(key, sl, prev, lvl);
+	for (i = 0; i <= lvl; ++i) {
+		new = create_node(key, data);
+		if (!new)
+			break;
+		new->next = prev[i]->next;
+		prev[i]->next = new;
+	}
+
+	return new;
+}
+
 void skiplist_free(struct skiplist *sl)
 {
 	struct skiplist_node *curr;
