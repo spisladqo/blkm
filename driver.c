@@ -10,8 +10,6 @@
 #define THIS_DEVICE_PATH "/dev/sdblk"
 #define MAX_PATH_LEN 20
 
-static sector_t next_free_sector = 0;
-
 static struct gendisk *init_disk(sector_t capacity);
 static void blkm_submit_bio(struct bio *bio);
 static const struct block_device_operations blkm_fops;
@@ -25,6 +23,8 @@ static struct blkm_dev {
 static struct blkm_dev *base_handle;
 static struct bio_set *bio_pool;
 static int major;
+
+static sector_t next_free_sector = 0;
 static struct skiplist *skiplist;
 
 static int __init blkm_init(void)
@@ -218,6 +218,87 @@ static struct gendisk *init_disk(sector_t capacity)
 	return disk;
 }
 
+int redirect_read(struct bio *bio)
+{
+	struct skiplist_node *node;
+	sector_t orig_address;
+	sector_t redir_address;
+
+	orig_address = bio->bi_iter.bi_sector;
+	node = skiplist_find_node(orig_address, skiplist);
+	if (!node) {
+		pr_err("failed to read: address %llu is not mapped\n",
+			orig_address);
+		return -EINVAL;
+	}
+	redir_address = node->data;
+	pr_warn("successful read: address %llu is mapped to %llu\n",
+			orig_address, redir_address);
+
+	bio->bi_iter.bi_sector = redir_address;
+
+	return 0;
+}
+
+/*
+ * TODO: add write lenght check, and if rewrite request exceedes it,
+ * do not allow it.
+ */
+static int redirect_write(struct bio *bio)
+{
+	struct skiplist_node *node;
+	sector_t orig_address;
+	sector_t redir_address;
+	sector_t op_size;
+
+	orig_address = bio->bi_iter.bi_sector;
+	redir_address = next_free_sector;
+	op_size = (bio->bi_iter.bi_size + SECTOR_SIZE - 1) / SECTOR_SIZE;
+
+	node = skiplist_add(orig_address, redir_address, skiplist);
+	if (IS_ERR(node)) {
+		pr_err("failed to add mapping %llu to %llu to skiplist\n",
+			orig_address, redir_address);
+		return PTR_ERR(node);
+	}
+
+	if (redir_address == node->data) {
+		pr_warn("successful write: address %llu is already mapped to %llu\n",
+			orig_address, redir_address);
+		next_free_sector += op_size;
+		pr_warn("next free sector is now %llu\n", next_free_sector);
+	} else {
+		pr_warn("successful write: address %llu is now mapped to %llu\n",
+			orig_address, redir_address);
+		redir_address = node->data;
+	}
+	bio->bi_iter.bi_sector = redir_address;
+
+	return 0;
+}
+
+static int map_bio_address(struct bio *bio)
+{
+	enum req_op bio_oper = bio_op(bio);
+	int err;
+
+	switch (bio_oper) {
+	case REQ_OP_READ:
+		err = redirect_read(bio);
+		break;
+	case REQ_OP_WRITE:
+		err = redirect_write(bio);
+		break;
+	default:
+		pr_err("operation %d is not supported\n", bio_oper);
+		err = -EINVAL;
+	}
+	if (err)
+		return err;
+
+	return 0;
+}
+
 static void blkm_bio_end_io(struct bio *bio)
 {
 	bio_endio(bio->bi_private);
@@ -228,19 +309,25 @@ static void blkm_submit_bio(struct bio *bio)
 {
 	struct bio *new_bio;
 	struct block_device *base_dev;
+	int err;
 
 	base_dev = base_handle->bh->bdev;
 	new_bio = bio_alloc_clone(base_dev, bio, GFP_KERNEL, bio_pool);
-	if (!new_bio) {
-		pr_err("failed to allocate new bio based on incoming bio\n");
-		bio_io_error(bio);
-		return;
-	}
+	if (!new_bio)
+		goto fail;
 
 	new_bio->bi_private = bio;
 	new_bio->bi_end_io = blkm_bio_end_io;
+	err = map_bio_address(new_bio);
+	if (err)
+		goto fail;
 
 	submit_bio(new_bio);
+	return;
+fail:
+	if (new_bio)
+		bio_put(new_bio);
+	bio_io_error(bio);
 }
 
 static const struct block_device_operations blkm_fops = {
