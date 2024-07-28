@@ -195,30 +195,38 @@ struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 	struct skiplist_node *old;
 	struct skiplist_node *new;
 	int lvl;
-	int ret;
+	int err;
 	int i;
 
 	old = skiplist_find_node(key, sl);
-	if (old) {
-		replace_data(old, data);
+	if (old)
 		return old;
-	}
 
 	lvl = get_random_lvl(sl->max_lvl);
-	ret = move_up_if_lvl_nex(sl, lvl);
-	if (ret)
-		return ERR_PTR(ret);
+	err = move_up_if_lvl_nex(sl, lvl);
+	if (err)
+		goto fail;
 
 	get_prev_nodes(key, sl, prev, lvl);
 	for (i = 0; i <= lvl; ++i) {
 		new = create_node(key, data);
-		if (!new)
-			break;
+		if (!new) {
+			err = -ENOMEM;
+			goto alloc_fail;
+		}
 		new->next = prev[i]->next;
 		prev[i]->next = new;
 	}
-
 	return new;
+
+alloc_fail:
+	for (i = i - 1; i >= 0; --i) {
+		new = prev[i]->next;
+		prev[i]->next = new->next;
+		kfree(new);
+	}
+fail:
+	return ERR_PTR(err);
 }
 
 void skiplist_free(struct skiplist *sl)
