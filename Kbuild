@@ -9,6 +9,6 @@ ccflags-y :=	-Wall					\
 		-Werror=format-security			\
 		-Werror=implicit-function-declaration
 
-blkm-y := driver.o
+blkm-y := driver.o skiplist.o
 
 obj-m := blkm.o
