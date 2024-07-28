@@ -115,15 +115,16 @@ static int get_prev_nodes(sector_t key, struct skiplist *sl,
 
 struct skiplist_node *skiplist_find_node(sector_t key, struct skiplist *sl)
 {
-	struct skiplist_node *found;
-	struct skiplist_node prevs[sl->head_lvl];
-	int i;
+	struct skiplist_node *curr = sl->head;
 
-	get_prev_nodes(key, sl, *prevs, sl->head_lvl);
-
-	for (i = sl->head_lvl; i >= 0 && !found; i--)
-		if (prevs[i] && prevs[i]->next->key == key)
-			found = prevs[i]->next;
+	while (curr) {
+		if (curr->next->key == key)
+			return curr->next;
+		else if (curr->next->key < key)
+			curr = curr->next;
+		else
+			curr = curr->lower;
+	}
 
 	return NULL;
 }
