@@ -4,26 +4,12 @@
  */
 
 #include "blkm.h"
-#include <vdso/limits.h>
 
 #define HEAD_KEY ((sector_t)0)
-#define HEAD_DATA ((sector_t)ULONG_MAX)
-#define TAIL_KEY ((sector_t)ULONG_MAX)
+#define HEAD_DATA ((sector_t)U64_MAX)
+#define TAIL_KEY ((sector_t)U64_MAX)
 #define TAIL_DATA ((sector_t)0)
 #define MAX_LVL 20
-
-struct skiplist_node {
-	struct skiplist_node *next;
-	struct skiplist_node *lower;
-	sector_t key;
-	sector_t data;
-};
-
-struct skiplist {
-	struct skiplist_node *head;
-	int head_lvl;
-	int max_lvl;
-};
 
 static void free_node_full(struct skiplist_node *node)
 {
