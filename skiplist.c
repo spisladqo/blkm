@@ -21,8 +21,8 @@ struct skiplist_node {
 
 struct skiplist {
 	struct skiplist_node *head;
-	unsigned int head_lvl;
-	unsigned int max_lvl;
+	int head_lvl;
+	int max_lvl;
 };
 
 static void free_node_full(struct skiplist_node *node)
@@ -37,11 +37,11 @@ static void free_node_full(struct skiplist_node *node)
 }
 
 static struct skiplist_node *create_node_of_lvl(sector_t key, sector_t data,
-							unsigned int lvl)
+							int lvl)
 {
 	struct skiplist_node *last;
 	struct skiplist_node *curr;
-	unsigned int curr_lvl;
+	int curr_lvl;
 
 	last = NULL;
 	for (curr_lvl = 0; curr_lvl <= lvl; ++curr_lvl) {
@@ -94,7 +94,7 @@ alloc_fail:
 	return NULL;
 }
 
-static void get_prev_nodes(sector_t key, struct skiplist *sl,
+static int get_prev_nodes(sector_t key, struct skiplist *sl,
 			struct skiplist_node *buf, int lvl)
 {
 	struct skiplist_node *curr;
@@ -128,7 +128,7 @@ struct skiplist_node *skiplist_find_node(sector_t key, struct skiplist *sl)
 	return NULL;
 }
 
-static int move_head_and_tail_up(struct skiplist *sl, unsigned int lvls_up)
+static int move_head_and_tail_up(struct skiplist *sl, int lvls_up)
 {
 	struct skiplist_node *head_ext;
 	struct skiplist_node *tail_ext;
@@ -161,7 +161,7 @@ alloc_fail:
 	return -ENOMEM;
 }
 
-static int move_up_if_lvl_nex(struct skiplist *sl, unsigned int lvl)
+static int move_up_if_lvl_nex(struct skiplist *sl, int lvl)
 {
 	unsigned int diff;
 	int ret;
@@ -184,8 +184,8 @@ static int flip_coin(void)
 	return get_random_u8() % 2;
 }
 
-static unsigned int get_random_lvl(unsigned int max) {
-	unsigned int lvl = 0;
+static int get_random_lvl(int max) {
+	int lvl = 0;
 
 	while ((lvl < max) && flip_coin())
 		lvl++;
