@@ -251,6 +251,11 @@ static int redirect_read(struct bio *bio)
 	return 0;
 }
 
+static sector_t get_bi_size_sectors(struct bio *bio)
+{
+	return (bio->bi_iter.bi_size + SECTOR_SIZE - 1) / SECTOR_SIZE;
+}
+
 /*
  * TODO: add write lenght check, and if rewrite request exceedes it,
  * do not allow it.
@@ -264,7 +269,7 @@ static int redirect_write(struct bio *bio)
 
 	orig_address = bio->bi_iter.bi_sector;
 	redir_address = next_free_sector;
-	op_size = (bio->bi_iter.bi_size + SECTOR_SIZE - 1) / SECTOR_SIZE;
+	op_size = get_bi_size_sectors(bio);
 
 	node = skiplist_add(orig_address, redir_address, skiplist);
 	if (IS_ERR(node)) {
@@ -272,7 +277,6 @@ static int redirect_write(struct bio *bio)
 			orig_address, redir_address);
 		return PTR_ERR(node);
 	}
-	skiplist_print(skiplist);
 	if (redir_address == node->data) {
 		pr_warn("successful write: address %llu is already mapped to %llu\n",
 			orig_address, redir_address);
