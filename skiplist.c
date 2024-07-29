@@ -88,11 +88,12 @@ static void get_prev_nodes(sector_t key, struct skiplist *sl,
 
 	lvls_passed = 0;
 	curr = sl->head;
-	while (curr && lvls_passed < lvl) {
+	while (curr && lvls_passed <= lvl) {
 		if (curr->next->key < key || curr->data != HEAD_DATA) {
 			curr = curr->next;
 		} else {
-			buf[lvl-lvls_passed-1] = curr;
+			buf[lvl-lvls_passed] = curr;
+			pr_warn("buf[%d] is %p\n", lvl-lvls_passed, curr);
 			++lvls_passed;
 			curr = curr->lower;
 		}
