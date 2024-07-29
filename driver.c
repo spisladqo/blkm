@@ -54,7 +54,18 @@ static int __init blkm_init(void)
 		err = -ENOMEM;
 		goto init_fail;
 	}
+	pr_warn("skiplist has address %p\n", skiplist);
+	pr_warn("skiplist head has address %p\n", skiplist->head);
+	pr_warn("head level = %d, max level = %d\n",
+		skiplist->head_lvl, skiplist->max_lvl);
 
+	skiplist_print(skiplist);
+	if (!skiplist_add(0, 0, skiplist)) {
+		pr_warn("failed to add partition table mapping to skiplist\n");
+		err = -ENOMEM;
+		goto init_fail;
+	}
+	pr_warn("partition table mapped\n");
 	pr_warn("blkdev module init\n");
 	return 0;
 
@@ -261,7 +272,7 @@ static int redirect_write(struct bio *bio)
 			orig_address, redir_address);
 		return PTR_ERR(node);
 	}
-
+	skiplist_print(skiplist);
 	if (redir_address == node->data) {
 		pr_warn("successful write: address %llu is already mapped to %llu\n",
 			orig_address, redir_address);
