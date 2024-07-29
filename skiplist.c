@@ -22,15 +22,15 @@ static void free_node_full(struct skiplist_node *node)
 	}
 }
 
-static struct skiplist_node *create_node_of_lvl(sector_t key, sector_t data,
-							int lvl)
+static struct skiplist_node *create_node_tall(sector_t key, sector_t data,
+								int h)
 {
 	struct skiplist_node *last;
 	struct skiplist_node *curr;
-	int curr_lvl;
+	int curr_h;
 
 	last = NULL;
-	for (curr_lvl = 0; curr_lvl <= lvl; ++curr_lvl) {
+	for (curr_h = 0; curr_h < h; ++curr_h) {
 		curr = kzalloc(sizeof(*curr), GFP_KERNEL);
 		if (!curr)
 			goto alloc_fail;
@@ -51,7 +51,7 @@ alloc_fail:
 
 static struct skiplist_node *create_node(sector_t key, sector_t data)
 {
-	return create_node_of_lvl(key, data, 0);
+	return create_node_tall(key, data, 1);
 }
 
 struct skiplist *skiplist_init(void)
@@ -122,22 +122,30 @@ static int move_head_and_tail_up(struct skiplist *sl, int lvls_up)
 	struct skiplist_node *curr;
 	struct skiplist_node *temp;
 
-	head_ext = create_node_of_lvl(HEAD_KEY, HEAD_DATA, lvls_up);
-	tail_ext = create_node_of_lvl(TAIL_KEY, TAIL_DATA, lvls_up);
+	pr_warn("need to move %d lvls up\n", lvls_up);
+	head_ext = create_node_tall(HEAD_KEY, HEAD_DATA, lvls_up);
+	tail_ext = create_node_tall(TAIL_KEY, TAIL_DATA, lvls_up);
 	if (!head_ext || !tail_ext)
 		goto alloc_fail;
 
 	curr = head_ext;
 	temp = tail_ext;
-	while (curr->lower && temp->lower) {
+	while (curr && temp) {
 		curr->next = temp;
+		if (!curr->lower || !temp->lower)
+			break;
+
 		curr = curr->lower;
 		temp = temp->lower;
 	}
 
+	pr_warn("initial head->next = %p\n", sl->head->next);
 	curr->lower = sl->head;
+	pr_warn("curr->lower = %p\n", curr->lower);
 	temp->lower = skiplist_find_node(TAIL_KEY, sl);
+	pr_warn("temp->lower = %p\n", temp->lower);
 	sl->head = head_ext;
+	pr_warn("new head = %p\n", sl->head);
 
 	return 0;
 
@@ -157,10 +165,15 @@ static int move_up_if_lvl_nex(struct skiplist *sl, int lvl)
 		return 0;
 	}
 
+	pr_warn("head lvl was %d, got lvl %d, need to move up\n", sl->head_lvl, lvl);
 	diff = lvl - sl->head_lvl;
 	ret = move_head_and_tail_up(sl, diff);
-	if (ret)
+	if (ret) {
+		pr_err("failed to move head and tail up\n");
 		return ret;
+	}
+
+	pr_warn("moved up successfully\n");
 	sl->head_lvl = lvl;
 
 	return 0;
@@ -183,6 +196,12 @@ static int get_random_lvl(int max) {
 struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 					struct skiplist *sl)
 {
+	if (!sl) {
+		pr_warn("cannot add, skiplist is not initialized\n");
+		return NULL;
+	}
+	pr_warn("max lvl = %d\n", sl->max_lvl);
+
 	struct skiplist_node *prev[sl->max_lvl+1];
 	struct skiplist_node *old;
 	struct skiplist_node *new;
@@ -190,14 +209,22 @@ struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 	int err;
 	int i;
 
+	pr_warn("finding old\n");
 	old = skiplist_find_node(key, sl);
 	if (old)
 		return old;
 
+	pr_warn("old not found\n");
+
 	lvl = get_random_lvl(sl->max_lvl);
+	pr_warn("got lvl %d, curr lvl %d\n", lvl, sl->head_lvl);
+
 	err = move_up_if_lvl_nex(sl, lvl);
 	if (err)
 		goto fail;
+
+	skiplist_print(sl);
+	pr_warn("curr lvl = %d\n", sl->head_lvl);
 
 	get_prev_nodes(key, sl, prev, lvl);
 	for (i = 0; i <= lvl; ++i) {
@@ -209,6 +236,8 @@ struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 		new->next = prev[i]->next;
 		prev[i]->next = new;
 	}
+	pr_warn("added successfully\n");
+
 	return new;
 
 alloc_fail:
