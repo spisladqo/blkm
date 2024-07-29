@@ -282,3 +282,25 @@ void skiplist_free(struct skiplist *sl)
 
 	kfree(sl);
 }
+
+void skiplist_print(struct skiplist *sl) {
+	struct skiplist_node *curr;
+	struct skiplist_node *head;
+
+	head = sl->head;
+	while (head) {
+		curr = head;
+		while (curr) {
+			if (curr->key == HEAD_KEY && curr->data == HEAD_DATA)
+				printk("head->");
+			else if (curr->key == TAIL_KEY && curr->data == TAIL_DATA)
+				printk("tail->");
+			else
+				printk("(%llu-%llu)->", curr->key, curr->data);
+
+			curr = curr->next;
+		}
+		printk("\n");
+		head = head->lower;
+	}
+}
