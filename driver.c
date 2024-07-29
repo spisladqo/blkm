@@ -218,7 +218,7 @@ static struct gendisk *init_disk(sector_t capacity)
 	return disk;
 }
 
-int redirect_read(struct bio *bio)
+static int redirect_read(struct bio *bio)
 {
 	struct skiplist_node *node;
 	sector_t orig_address;
