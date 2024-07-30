@@ -218,6 +218,11 @@ static struct gendisk *init_disk(sector_t capacity)
 	return disk;
 }
 
+static sector_t get_bi_size_sectors(struct bio *bio)
+{
+	return (bio->bi_iter.bi_size + SECTOR_SIZE - 1) / SECTOR_SIZE;
+}
+
 static int redirect_read(struct bio *bio)
 {
 	struct skiplist_node *node;
@@ -228,21 +233,26 @@ static int redirect_read(struct bio *bio)
 	pr_warn("read request: sector %llu\n", orig_address);
 	node = skiplist_find_node(orig_address, skiplist);
 	if (!node) {
-		redir_address = orig_address;
-		pr_warn("successful read from %llu, which is unmapped\n", orig_address);
+		pr_warn("sector %llu is unmapped, trying to map...\n", orig_address);
+		redir_address = next_free_sector;
+		next_free_sector += get_bi_size_sectors(bio);
+		node = skiplist_add(orig_address, redir_address, skiplist);
+		if (IS_ERR(node)) {
+			pr_warn("failed to map %llu to %llu\n",
+				orig_address, redir_address);
+			return PTR_ERR(node);
+		}
+		pr_warn("successfully mapped %llu to %llu\n",
+			orig_address, redir_address);
 	} else {
 		redir_address = node->data;
-		pr_warn("successful read from %llu, which is mapped to %llu\n",
-			orig_address, redir_address);
 	}
+	pr_warn("successful read from %llu, which is mapped to %llu\n",
+		orig_address, redir_address);
+
 	bio->bi_iter.bi_sector = redir_address;
 
 	return 0;
-}
-
-static sector_t get_bi_size_sectors(struct bio *bio)
-{
-	return (bio->bi_iter.bi_size + SECTOR_SIZE - 1) / SECTOR_SIZE;
 }
 
 /*
