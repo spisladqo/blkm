@@ -44,7 +44,7 @@ static struct skiplist_node *create_node_tall(sector_t key, sector_t data,
 	return curr;
 
 alloc_fail:
-	free_node_full(curr);
+	free_node_full(last);
 
 	return NULL;
 }
@@ -228,6 +228,7 @@ struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 	pr_warn("curr lvl = %d\n", sl->head_lvl);
 
 	get_prev_nodes(key, sl, prev, lvl);
+
 	for (i = 0; i <= lvl; ++i) {
 		new = create_node(key, data);
 		if (!new) {
