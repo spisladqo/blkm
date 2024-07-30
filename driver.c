@@ -3,7 +3,7 @@
  * Bio-based block device driver module by: Daniel Vlasenco
  */
 
-#include <linux/blkdev.h>
+#include "blkm.h"
 #include <linux/module.h>
 
 #define THIS_DEVICE_NAME "sdblk"
@@ -24,51 +24,65 @@ static struct blkm_dev *base_handle;
 static struct bio_set *bio_pool;
 static int major;
 
+static sector_t next_free_sector = 0;
+static struct skiplist *skiplist;
+
 static int __init blkm_init(void)
 {
 	int err;
 
 	major = register_blkdev(0, THIS_DEVICE_NAME);
 	if (major < 0) {
-		pr_err("failed to obtain major\n");
-		return major;
+		pr_warn("failed to register block device\n");
+		err = major;
+		goto reg_fail;
 	}
 	bio_pool = kzalloc(sizeof(*bio_pool), GFP_KERNEL);
 	if (!bio_pool) {
-		pr_err("failed to allocate bioset\n");
-		unregister_blkdev(major, THIS_DEVICE_NAME);
-		return -ENOMEM;
+		pr_warn("failed to allocate bioset\n");
+		err = -ENOMEM;
+		goto bioset_alloc_fail;
 	}
 	err = bioset_init(bio_pool, BIO_POOL_SIZE, 0, BIOSET_NEED_BVECS);
 	if (err) {
-		pr_err("failed to initialize bioset\n");
-		bioset_exit(bio_pool);
-		kfree(bio_pool);
-		unregister_blkdev(major, THIS_DEVICE_NAME);
-		return err;
+		pr_warn("failed to initialize bioset\n");
+		goto init_fail;
 	}
-
+	skiplist = skiplist_init();
+	if (!skiplist) {
+		pr_warn("failed to initialize skiplist\n");
+		err = -ENOMEM;
+		goto init_fail;
+	}
 	pr_warn("blkdev module init\n");
-
 	return 0;
+
+init_fail:
+	skiplist_free(skiplist);
+	bioset_exit(bio_pool);
+	kfree(bio_pool);
+bioset_alloc_fail:
+	unregister_blkdev(major, THIS_DEVICE_NAME);
+reg_fail:
+	return err;
 }
 
 static void __exit blkm_exit(void)
 {
 	if (base_handle) {
 		kfree(base_handle->path);
-	}
-	if (base_handle && base_handle->assoc_disk) {
-		del_gendisk(base_handle->assoc_disk);
-		put_disk(base_handle->assoc_disk);
-	}
-	if (base_handle && base_handle->bh) {
-		bdev_release(base_handle->bh);
+		if (base_handle->assoc_disk) {
+			del_gendisk(base_handle->assoc_disk);
+			put_disk(base_handle->assoc_disk);
+		}
+		if (base_handle->bh)
+			bdev_release(base_handle->bh);
 	}
 	kfree(base_handle);
 	bioset_exit(bio_pool);
 	kfree(bio_pool);
 	unregister_blkdev(major, THIS_DEVICE_NAME);
+	skiplist_free(skiplist);
 
 	pr_warn("blkdev module exit\n");
 }
@@ -80,8 +94,10 @@ static int base_path_set(const char *arg, const struct kernel_param *kp)
 
 	if (!base_handle) {
 		base_handle = kzalloc(sizeof(*base_handle), GFP_KERNEL);
-		if (!base_handle)
+		if (!base_handle) {
+			pr_err("failed to allocate base blkm_dev handle\n");
 			return -ENOMEM;
+		}
 	}
 	if (base_handle->bh || base_handle->assoc_disk) {
 		pr_err("need to close device before setting new one\n");
@@ -94,7 +110,7 @@ static int base_path_set(const char *arg, const struct kernel_param *kp)
 
 	path = kzalloc(sizeof(char) * (len + 1), GFP_KERNEL);
 	if (!path) {
-		pr_err("failed to allocate path\n");
+		pr_err("failed to allocate path to block device\n");
 		return -ENOMEM;
 	}
 	strncpy(path, arg, len);
@@ -148,8 +164,8 @@ static int open_base_and_create_disk(const char *arg, const struct kernel_param 
 	new_disk = init_disk(base_disk_cap);
 	if (IS_ERR_OR_NULL(new_disk)) {
 		pr_err("failed to initialize disk\n");
-		bdev_release(bh);
-		return PTR_ERR(new_disk);
+		err = PTR_ERR(new_disk);
+		goto disk_init_fail;
 	}
 	new_disk->private_data = base_handle;
 	base_handle->bh = bh;
@@ -158,17 +174,20 @@ static int open_base_and_create_disk(const char *arg, const struct kernel_param 
 	err = add_disk(new_disk);
 	if (err) {
 		pr_err("failed to add disk after initialization\n");
-		bdev_release(bh);
-		put_disk(new_disk);
-		base_handle->bh = NULL;
-		base_handle->assoc_disk = NULL;
-		return err;
+		goto disk_add_fail;
 	}
 
 	pr_warn("opened device '%s' and created disk '%s' based on it\n",
 			base_handle->path, new_disk->disk_name);
-
 	return 0;
+
+disk_add_fail:
+	put_disk(new_disk);
+	base_handle->bh = NULL;
+	base_handle->assoc_disk = NULL;
+disk_init_fail:
+	bdev_release(bh);
+	return err;
 }
 
 static const struct kernel_param_ops open_ops = {
@@ -199,6 +218,103 @@ static struct gendisk *init_disk(sector_t capacity)
 	return disk;
 }
 
+static sector_t get_bi_size_sectors(struct bio *bio)
+{
+	return (bio->bi_iter.bi_size + SECTOR_SIZE - 1) / SECTOR_SIZE;
+}
+
+static int redirect_read(struct bio *bio)
+{
+	struct skiplist_node *node;
+	sector_t orig_sector;
+	sector_t redir_sector;
+
+	orig_sector = bio->bi_iter.bi_sector;
+	pr_warn("read request: sector %llu\n", orig_sector);
+	node = skiplist_find_node(orig_sector, skiplist);
+	if (!node) {
+		pr_warn("sector %llu is unmapped, trying to map...\n", orig_sector);
+		redir_sector = next_free_sector;
+		next_free_sector += get_bi_size_sectors(bio);
+		node = skiplist_add(orig_sector, redir_sector, skiplist);
+		if (IS_ERR(node)) {
+			pr_warn("failed to map %llu to %llu\n",
+				orig_sector, redir_sector);
+			return PTR_ERR(node);
+		}
+		pr_warn("successfully mapped %llu to %llu\n",
+			orig_sector, redir_sector);
+	} else {
+		redir_sector = node->data;
+	}
+	pr_warn("successful read from %llu, which is mapped to %llu\n",
+		orig_sector, redir_sector);
+
+	bio->bi_iter.bi_sector = redir_sector;
+
+	return 0;
+}
+
+/*
+ * TODO: add write lenght check, and if rewrite request exceedes it,
+ * do not allow it.
+ */
+static int redirect_write(struct bio *bio)
+{
+	struct skiplist_node *node;
+	sector_t orig_sector;
+	sector_t redir_sector;
+
+	orig_sector = bio->bi_iter.bi_sector;
+	redir_sector = next_free_sector;
+	pr_warn("write request: sector %llu, next free base sector is %llu\n",
+		orig_sector, next_free_sector);
+
+	node = skiplist_add(orig_sector, redir_sector, skiplist);
+	if (IS_ERR(node)) {
+		pr_err("failed to map %llu to %llu\n", orig_sector, redir_sector);
+		return PTR_ERR(node);
+	}
+
+	if (redir_sector == node->data) {
+		pr_warn("successful write to %llu, which was already mapped to %llu\n",
+			orig_sector, redir_sector);
+	} else {
+		redir_sector = node->data;
+		pr_warn("successful write to %llu, it is now mapped to %llu\n",
+			orig_sector, redir_sector);
+		next_free_sector += get_bi_size_sectors(bio);
+	}
+	bio->bi_iter.bi_sector = redir_sector;
+
+	pr_warn("next free base sector is %llu\n", next_free_sector);
+	skiplist_print(skiplist);
+
+	return 0;
+}
+
+static int map_bio_address(struct bio *bio)
+{
+	enum req_op bio_oper = bio_op(bio);
+	int err;
+
+	switch (bio_oper) {
+	case REQ_OP_READ:
+		err = redirect_read(bio);
+		break;
+	case REQ_OP_WRITE:
+		err = redirect_write(bio);
+		break;
+	default:
+		pr_err("operation %d is not supported\n", bio_oper);
+		err = -EINVAL;
+	}
+	if (err)
+		return err;
+
+	return 0;
+}
+
 static void blkm_bio_end_io(struct bio *bio)
 {
 	bio_endio(bio->bi_private);
@@ -209,24 +325,25 @@ static void blkm_submit_bio(struct bio *bio)
 {
 	struct bio *new_bio;
 	struct block_device *base_dev;
-
-	// when we get here, we should have device opened and disk created
-	BUG_ON(!base_handle);
-	BUG_ON(!base_handle->bh);
-	BUG_ON(!base_handle->assoc_disk);
+	int err;
 
 	base_dev = base_handle->bh->bdev;
 	new_bio = bio_alloc_clone(base_dev, bio, GFP_KERNEL, bio_pool);
-	if (!new_bio) {
-		pr_err("failed to allocate new bio based on incoming bio\n");
-		bio_io_error(bio);
-		return;
-	}
+	if (!new_bio)
+		goto fail;
 
 	new_bio->bi_private = bio;
 	new_bio->bi_end_io = blkm_bio_end_io;
+	err = map_bio_address(new_bio);
+	if (err)
+		goto fail;
 
 	submit_bio(new_bio);
+	return;
+fail:
+	if (new_bio)
+		bio_put(new_bio);
+	bio_io_error(bio);
 }
 
 static const struct block_device_operations blkm_fops = {

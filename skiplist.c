@@ -4,26 +4,12 @@
  */
 
 #include "blkm.h"
-#include <vdso/limits.h>
 
 #define HEAD_KEY ((sector_t)0)
-#define HEAD_DATA ((sector_t)ULONG_MAX)
-#define TAIL_KEY ((sector_t)ULONG_MAX)
+#define HEAD_DATA ((sector_t)U64_MAX)
+#define TAIL_KEY ((sector_t)U64_MAX)
 #define TAIL_DATA ((sector_t)0)
 #define MAX_LVL 20
-
-struct skiplist_node {
-	struct skiplist_node *next;
-	struct skiplist_node *lower;
-	sector_t key;
-	sector_t data;
-};
-
-struct skiplist {
-	struct skiplist_node *head;
-	int head_lvl;
-	int max_lvl;
-};
 
 static void free_node_full(struct skiplist_node *node)
 {
@@ -36,15 +22,15 @@ static void free_node_full(struct skiplist_node *node)
 	}
 }
 
-static struct skiplist_node *create_node_of_lvl(sector_t key, sector_t data,
-							int lvl)
+static struct skiplist_node *create_node_tall(sector_t key, sector_t data,
+								int h)
 {
 	struct skiplist_node *last;
 	struct skiplist_node *curr;
-	int curr_lvl;
+	int curr_h;
 
 	last = NULL;
-	for (curr_lvl = 0; curr_lvl <= lvl; ++curr_lvl) {
+	for (curr_h = 0; curr_h < h; ++curr_h) {
 		curr = kzalloc(sizeof(*curr), GFP_KERNEL);
 		if (!curr)
 			goto alloc_fail;
@@ -58,14 +44,14 @@ static struct skiplist_node *create_node_of_lvl(sector_t key, sector_t data,
 	return curr;
 
 alloc_fail:
-	free_node_full(curr);
+	free_node_full(last);
 
 	return NULL;
 }
 
 static struct skiplist_node *create_node(sector_t key, sector_t data)
 {
-	return create_node_of_lvl(key, data, 0);
+	return create_node_tall(key, data, 1);
 }
 
 struct skiplist *skiplist_init(void)
@@ -94,22 +80,37 @@ alloc_fail:
 	return NULL;
 }
 
-static int get_prev_nodes(sector_t key, struct skiplist *sl,
-			struct skiplist_node *buf, int lvl)
+static void get_prev_nodes(sector_t key, struct skiplist *sl,
+			struct skiplist_node **buf, int lvl)
 {
 	struct skiplist_node *curr;
-	int lvls_passed;
+	int curr_lvl;
 
-	lvls_passed = 0;
 	curr = sl->head;
-	while (curr && lvls_passed < lvl) {
-		if (curr->next->key < key || curr->data != HEAD_DATA) {
+	curr_lvl = sl->head_lvl;
+	pr_warn("need to get prev nodes for key %llu\n", key);
+
+	while (curr && curr_lvl >= 0) {
+		pr_warn("curr key %llu, next key %llu, curr lvl %d, max pred lvl %d\n",
+			curr->key, curr->next->key, curr_lvl, lvl);
+		if (curr->next->key < key) {
+			pr_warn("moving forward, next is %p\n", curr->next);
 			curr = curr->next;
 		} else {
-			buf[lvl-lvls_passed-1] = curr;
-			++lvls_passed;
+			if (curr_lvl <= lvl) {
+				buf[curr_lvl] = curr;
+				pr_warn("buf[%d] is %p with key %llu\n",
+					curr_lvl, buf[curr_lvl], buf[curr_lvl]->key);
+			}
+			pr_warn("moving down, lower is %p\n", curr->lower);
+			--curr_lvl;
 			curr = curr->lower;
 		}
+	}
+
+	for (int i = 0; i <= lvl; ++i) {
+		pr_warn("buf[%d] is %p with key %llu\n",
+			i, buf[i], buf[i]->key);
 	}
 }
 
@@ -136,15 +137,18 @@ static int move_head_and_tail_up(struct skiplist *sl, int lvls_up)
 	struct skiplist_node *curr;
 	struct skiplist_node *temp;
 
-	head_ext = create_node_of_lvl(HEAD_KEY, HEAD_DATA, lvls_up);
-	tail_ext = create_node_of_lvl(TAIL_KEY, TAIL_DATA, lvls_up);
+	head_ext = create_node_tall(HEAD_KEY, HEAD_DATA, lvls_up);
+	tail_ext = create_node_tall(TAIL_KEY, TAIL_DATA, lvls_up);
 	if (!head_ext || !tail_ext)
 		goto alloc_fail;
 
 	curr = head_ext;
 	temp = tail_ext;
-	while (curr->lower && temp->lower) {
+	while (curr && temp) {
 		curr->next = temp;
+		if (!curr->lower || !temp->lower)
+			break;
+
 		curr = curr->lower;
 		temp = temp->lower;
 	}
@@ -168,14 +172,19 @@ static int move_up_if_lvl_nex(struct skiplist *sl, int lvl)
 	int ret;
 
 	if (lvl <= sl->head_lvl || lvl > sl->max_lvl) {
+		pr_warn("no need to move up\n");
 		return 0;
 	}
 
 	diff = lvl - sl->head_lvl;
 	ret = move_head_and_tail_up(sl, diff);
-	if (ret)
+	if (ret) {
+		pr_err("failed to move head and tail up\n");
 		return ret;
+	}
+
 	sl->head_lvl = lvl;
+	pr_warn("moved up successfully, now sl->head is at lvl %d\n", sl->head_lvl);
 
 	return 0;
 }
@@ -194,45 +203,58 @@ static int get_random_lvl(int max) {
 	return lvl;
 }
 
-static void replace_data(struct skiplist_node *node, sector_t data)
-{
-	while (node) {
-		node->data = data;
-		node = node->lower;
-	}
-}
-
 struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 					struct skiplist *sl)
 {
 	struct skiplist_node *prev[sl->max_lvl+1];
 	struct skiplist_node *old;
 	struct skiplist_node *new;
+	struct skiplist_node *temp;
 	int lvl;
-	int ret;
+	int err;
 	int i;
 
 	old = skiplist_find_node(key, sl);
-	if (old) {
-		replace_data(old, data);
+	if (old)
 		return old;
-	}
 
 	lvl = get_random_lvl(sl->max_lvl);
-	ret = move_up_if_lvl_nex(sl, lvl);
-	if (ret)
-		return ERR_PTR(ret);
+	err = move_up_if_lvl_nex(sl, lvl);
+	if (err)
+		goto fail;
 
 	get_prev_nodes(key, sl, prev, lvl);
+
+	temp = NULL;
 	for (i = 0; i <= lvl; ++i) {
 		new = create_node(key, data);
-		if (!new)
-			break;
-		new->next = prev[i]->next;
+		if (!new) {
+			err = -ENOMEM;
+			goto alloc_fail;
+		}
+		pr_warn("created node %p with key %llu and data %llu\n",
+			new, new->key, new->data);
+		if (temp) {
+			new->lower = temp;
+			pr_warn("connected node %p with key %llu from lvl %d to node %p with key %llu from lvl %d\n",
+				new, new->key, i, temp, temp->key, i-1);
+		}
+		new->next = prev[i]->next ;
 		prev[i]->next = new;
+		temp = new;
 	}
+	skiplist_print(sl);
 
 	return new;
+
+alloc_fail:
+	for (i = i - 1; i >= 0; --i) {
+		new = prev[i]->next;
+		prev[i]->next = new->next;
+		kfree(new);
+	}
+fail:
+	return ERR_PTR(err);
 }
 
 void skiplist_free(struct skiplist *sl)
@@ -266,4 +288,26 @@ void skiplist_free(struct skiplist *sl)
 	}
 
 	kfree(sl);
+}
+
+void skiplist_print(struct skiplist *sl) {
+	struct skiplist_node *curr;
+	struct skiplist_node *head;
+
+	head = sl->head;
+	while (head) {
+		curr = head;
+		while (curr) {
+			if (curr->key == HEAD_KEY && curr->data == HEAD_DATA)
+				printk(KERN_CONT "head->");
+			else if (curr->key == TAIL_KEY && curr->data == TAIL_DATA)
+				printk(KERN_CONT "tail->");
+			else
+				printk(KERN_CONT "(%llu-%llu)->", curr->key, curr->data);
+
+			curr = curr->next;
+		}
+		printk("\n");
+		head = head->lower;
+	}
 }
