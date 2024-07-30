@@ -54,6 +54,7 @@ static int __init blkm_init(void)
 		err = -ENOMEM;
 		goto init_fail;
 	}
+	pr_warn("blkdev module init\n");
 	return 0;
 
 init_fail:
