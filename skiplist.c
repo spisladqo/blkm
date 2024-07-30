@@ -84,24 +84,33 @@ static void get_prev_nodes(sector_t key, struct skiplist *sl,
 			struct skiplist_node **buf, int lvl)
 {
 	struct skiplist_node *curr;
-	int lvls_passed;
+	int curr_lvl;
 
-	lvls_passed = 0;
 	curr = sl->head;
-	pr_warn("need to find prev for key %llu\n", key);
-	while (curr && lvls_passed <= lvl) {
-		pr_warn("curr key is %llu\n", curr->key);
-		pr_warn("before check\n");
-		if (curr->next->key < key || (curr->next->key == key && curr->data == HEAD_DATA)) {
-			pr_warn("check passed\n");
+	curr_lvl = sl->head_lvl;
+	pr_warn("need to get prev nodes for key %llu\n", key);
+
+	while (curr && curr_lvl >= 0) {
+		pr_warn("curr key %llu, next key %llu, curr lvl %d, max pred lvl %d\n",
+			curr->key, curr->next->key, curr_lvl, lvl);
+		if (curr->next->key < key) {
+			pr_warn("moving forward, next is %p\n", curr->next);
 			curr = curr->next;
 		} else {
-			pr_warn("check not passed\n");
-			buf[lvl-lvls_passed] = curr;
-			pr_warn("buf[%d] is %p\n", lvl-lvls_passed, curr);
-			++lvls_passed;
+			if (curr_lvl <= lvl) {
+				buf[curr_lvl] = curr;
+				pr_warn("buf[%d] is %p with key %llu\n",
+					curr_lvl, buf[curr_lvl], buf[curr_lvl]->key);
+			}
+			pr_warn("moving down, lower is %p\n", curr->lower);
+			--curr_lvl;
 			curr = curr->lower;
 		}
+	}
+
+	for (int i = 0; i <= lvl; ++i) {
+		pr_warn("buf[%d] is %p with key %llu\n",
+			i, buf[i], buf[i]->key);
 	}
 }
 
@@ -162,13 +171,11 @@ static int move_up_if_lvl_nex(struct skiplist *sl, int lvl)
 	unsigned int diff;
 	int ret;
 
-	pr_warn("sl->head is at lvl %d, req lvl is %d\n", sl->head_lvl, lvl);
 	if (lvl <= sl->head_lvl || lvl > sl->max_lvl) {
 		pr_warn("no need to move up\n");
 		return 0;
 	}
 
-	pr_warn("need to move up\n");
 	diff = lvl - sl->head_lvl;
 	ret = move_head_and_tail_up(sl, diff);
 	if (ret) {
@@ -199,46 +206,43 @@ static int get_random_lvl(int max) {
 struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 					struct skiplist *sl)
 {
-	if (!sl) {
-		pr_warn("cannot add, skiplist is not initialized\n");
-		return NULL;
-	}
-	pr_warn("max lvl = %d\n", sl->max_lvl);
-
 	struct skiplist_node *prev[sl->max_lvl+1];
 	struct skiplist_node *old;
 	struct skiplist_node *new;
+	struct skiplist_node *temp;
 	int lvl;
 	int err;
 	int i;
 
-	pr_warn("finding node with same key %llu\n", key);
 	old = skiplist_find_node(key, sl);
 	if (old)
 		return old;
-
-	pr_warn("node with key %llu not found\n", key);
 
 	lvl = get_random_lvl(sl->max_lvl);
 	err = move_up_if_lvl_nex(sl, lvl);
 	if (err)
 		goto fail;
 
-	skiplist_print(sl);
-
-	pr_warn("sl = %p, sl->head = %p, prev lvl = %d\n", sl, sl->head, lvl);
 	get_prev_nodes(key, sl, prev, lvl);
 
+	temp = NULL;
 	for (i = 0; i <= lvl; ++i) {
 		new = create_node(key, data);
 		if (!new) {
 			err = -ENOMEM;
 			goto alloc_fail;
 		}
-		new->next = prev[i]->next;
+		pr_warn("created node %p with key %llu and data %llu\n",
+			new, new->key, new->data);
+		if (temp) {
+			new->lower = temp;
+			pr_warn("connected node %p with key %llu from lvl %d to node %p with key %llu from lvl %d\n",
+				new, new->key, i, temp, temp->key, i-1);
+		}
+		new->next = prev[i]->next ;
 		prev[i]->next = new;
+		temp = new;
 	}
-	pr_warn("added successfully\n");
 	skiplist_print(sl);
 
 	return new;
