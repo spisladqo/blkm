@@ -54,22 +54,10 @@ static int __init blkm_init(void)
 		err = -ENOMEM;
 		goto init_fail;
 	}
-	pr_warn("skiplist has address %p\n", skiplist);
-	pr_warn("skiplist head has address %p\n", skiplist->head);
-	pr_warn("head level = %d, max level = %d\n",
-		skiplist->head_lvl, skiplist->max_lvl);
-
-	skiplist_print(skiplist);
-	if (!skiplist_add(0, 0, skiplist)) {
-		pr_warn("failed to add partition table mapping to skiplist\n");
-		err = -ENOMEM;
-		goto init_fail;
-	}
-	pr_warn("partition table mapped\n");
-	pr_warn("blkdev module init\n");
 	return 0;
 
 init_fail:
+	skiplist_free(skiplist);
 	bioset_exit(bio_pool);
 	kfree(bio_pool);
 bioset_alloc_fail:
@@ -81,13 +69,13 @@ reg_fail:
 static void __exit blkm_exit(void)
 {
 	if (base_handle) {
+		kfree(base_handle->path);
 		if (base_handle->assoc_disk) {
 			del_gendisk(base_handle->assoc_disk);
 			put_disk(base_handle->assoc_disk);
 		}
 		if (base_handle->bh)
 			bdev_release(base_handle->bh);
-		kfree(base_handle->path);
 	}
 	kfree(base_handle);
 	bioset_exit(bio_pool);
@@ -236,16 +224,16 @@ static int redirect_read(struct bio *bio)
 	sector_t redir_address;
 
 	orig_address = bio->bi_iter.bi_sector;
+	pr_warn("read request: sector %llu\n", orig_address);
 	node = skiplist_find_node(orig_address, skiplist);
 	if (!node) {
-		pr_err("failed to read: address %llu is not mapped\n",
-			orig_address);
-		return -EINVAL;
-	}
-	redir_address = node->data;
-	pr_warn("successful read: address %llu is mapped to %llu\n",
+		redir_address = orig_address;
+		pr_warn("successful read from %llu, which is unmapped\n", orig_address);
+	} else {
+		redir_address = node->data;
+		pr_warn("successful read from %llu, which is mapped to %llu\n",
 			orig_address, redir_address);
-
+	}
 	bio->bi_iter.bi_sector = redir_address;
 
 	return 0;
@@ -265,29 +253,31 @@ static int redirect_write(struct bio *bio)
 	struct skiplist_node *node;
 	sector_t orig_address;
 	sector_t redir_address;
-	sector_t op_size;
 
 	orig_address = bio->bi_iter.bi_sector;
 	redir_address = next_free_sector;
-	op_size = get_bi_size_sectors(bio);
+	pr_warn("write request: sector %llu, next free base sector is %llu\n",
+		orig_address, next_free_sector);
 
 	node = skiplist_add(orig_address, redir_address, skiplist);
 	if (IS_ERR(node)) {
-		pr_err("failed to add mapping %llu to %llu to skiplist\n",
-			orig_address, redir_address);
+		pr_err("failed to map %llu to %llu\n", orig_address, redir_address);
 		return PTR_ERR(node);
 	}
+
 	if (redir_address == node->data) {
-		pr_warn("successful write: address %llu is already mapped to %llu\n",
+		pr_warn("successful write to %llu, which was already mapped to %llu\n",
 			orig_address, redir_address);
-		next_free_sector += op_size;
-		pr_warn("next free sector is now %llu\n", next_free_sector);
 	} else {
-		pr_warn("successful write: address %llu is now mapped to %llu\n",
-			orig_address, redir_address);
 		redir_address = node->data;
+		pr_warn("successful write to %llu, it is now mapped to %llu\n",
+			orig_address, redir_address);
+		next_free_sector += get_bi_size_sectors(bio);
 	}
 	bio->bi_iter.bi_sector = redir_address;
+
+	pr_warn("next free base sector is %llu\n", next_free_sector);
+	skiplist_print(skiplist);
 
 	return 0;
 }
