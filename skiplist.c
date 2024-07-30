@@ -299,11 +299,11 @@ void skiplist_print(struct skiplist *sl) {
 		curr = head;
 		while (curr) {
 			if (curr->key == HEAD_KEY && curr->data == HEAD_DATA)
-				printk("head->");
+				printk(KERN_CONT "head->");
 			else if (curr->key == TAIL_KEY && curr->data == TAIL_DATA)
-				printk("tail->");
+				printk(KERN_CONT "tail->");
 			else
-				printk("(%llu-%llu)->", curr->key, curr->data);
+				printk(KERN_CONT "(%llu-%llu)->", curr->key, curr->data);
 
 			curr = curr->next;
 		}
