@@ -4,7 +4,7 @@
  */
 
 #include "blkm.h"
-#include <linux/module.h>
+#include <linux/blkdev.h>
 
 #define THIS_DEVICE_NAME "sdblk"
 #define THIS_DEVICE_PATH "/dev/sdblk"
@@ -18,9 +18,8 @@ static struct blkm_dev {
 	struct bdev_handle *bh;
 	struct gendisk *assoc_disk;
 	char *path;
-};
+} *base_handle;
 
-static struct blkm_dev *base_handle;
 static struct bio_set *bio_pool;
 static int major;
 

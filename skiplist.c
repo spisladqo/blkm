@@ -189,7 +189,7 @@ static void get_prev_nodes(sector_t key, struct skiplist *sl,
 static int skiplist_insert_at_lvl(sector_t key, sector_t data,
 				struct skiplist *sl, int lvl)
 {
-	struct skiplist_node *prev[sl->max_lvl+1];
+	struct skiplist_node *prev[MAX_LVL+1];
 	struct skiplist_node *new;
 	struct skiplist_node *temp;
 	int i;
