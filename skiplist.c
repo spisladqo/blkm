@@ -137,10 +137,8 @@ static int move_up_if_lvl_nex(struct skiplist *sl, int lvl)
 	unsigned int diff;
 	int ret;
 
-	if (lvl <= sl->head_lvl || lvl > sl->max_lvl) {
-		pr_warn("no need to move up\n");
+	if (lvl <= sl->head_lvl || lvl > sl->max_lvl)
 		return 0;
-	}
 
 	diff = lvl - sl->head_lvl;
 	ret = move_head_and_tail_up(sl, diff);
@@ -148,9 +146,7 @@ static int move_up_if_lvl_nex(struct skiplist *sl, int lvl)
 		pr_err("failed to move head and tail up\n");
 		return ret;
 	}
-
 	sl->head_lvl = lvl;
-	pr_warn("moved up successfully, now sl->head is at lvl %d\n", sl->head_lvl);
 
 	return 0;
 }
@@ -241,8 +237,6 @@ struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 	err = skiplist_insert_at_lvl(key, data, sl, lvl);
 	if (err)
 		goto fail;
-
-	skiplist_print(sl);
 
 	return new;
 
