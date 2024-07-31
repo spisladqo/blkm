@@ -226,7 +226,7 @@ struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 	int err;
 
 	old = skiplist_find_node(key, sl);
-	aif (old)
+	if (old)
 		return old;
 
 	lvl = get_random_lvl(sl->max_lvl);
