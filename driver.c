@@ -4,7 +4,7 @@
  */
 
 #include "blkm.h"
-#include <linux/module.h>
+#include <linux/blkdev.h>
 
 #define THIS_DEVICE_NAME "sdblk"
 #define THIS_DEVICE_PATH "/dev/sdblk"

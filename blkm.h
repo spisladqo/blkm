@@ -1,5 +1,4 @@
-#include <linux/blkdev.h>
-#include <linux/limits.h>
+#include <linux/module.h>
 
 struct skiplist_node {
 	struct skiplist_node *next;
