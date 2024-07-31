@@ -198,13 +198,15 @@ static void get_prev_nodes(sector_t key, struct skiplist *sl,
 	}
 }
 
-static int insert_after_prev(sector_t key, sector_t data,
-			struct skiplist_node **prev, int lvl)
+static int skiplist_insert_at_lvl(sector_t key, sector_t data,
+				struct skiplist *sl, int lvl)
 {
+	struct skiplist_node *prev[sl->max_lvl+1];
 	struct skiplist_node *new;
 	struct skiplist_node *temp;
 	int i;
 
+	get_prev_nodes(key, sl, prev, lvl);
 	temp = NULL;
 	for (i = 0; i <= lvl; ++i) {
 		new = create_node(key, data);
@@ -230,7 +232,6 @@ fail:
 struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 					struct skiplist *sl)
 {
-	struct skiplist_node *prev[sl->max_lvl+1];
 	struct skiplist_node *old;
 	struct skiplist_node *new;
 	int lvl;
@@ -247,8 +248,7 @@ struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 	if (err)
 		goto fail;
 
-	get_prev_nodes(key, sl, prev, lvl);
-	err = insert_after_prev(key, data, prev, lvl);
+	err = skiplist_insert_at_lvl(key, data, sl, lvl);
 	if (err)
 		goto fail;
 
