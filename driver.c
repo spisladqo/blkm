@@ -95,7 +95,7 @@ static int base_path_set(const char *arg, const struct kernel_param *kp)
 	if (!base_handle) {
 		base_handle = kzalloc(sizeof(*base_handle), GFP_KERNEL);
 		if (!base_handle) {
-			pr_err("failed to allocate base blkm_dev handle\n");
+			pr_err("failed to allocate base block device handle\n");
 			return -ENOMEM;
 		}
 	}
@@ -173,7 +173,7 @@ static int open_base_and_create_disk(const char *arg, const struct kernel_param 
 
 	err = add_disk(new_disk);
 	if (err) {
-		pr_err("failed to add disk after initialization\n");
+		pr_err("failed to add disk\n");
 		goto disk_add_fail;
 	}
 
@@ -210,10 +210,7 @@ static struct gendisk *init_disk(sector_t capacity)
 	disk->minors = 1;
 	strcpy(disk->disk_name, THIS_DEVICE_NAME);
 	disk->fops = &blkm_fops;
-
-	pr_warn("requested capacity: %llu\n", capacity);
 	set_capacity(disk, capacity);
-	pr_warn("actual capacity: %llu\n", get_capacity(disk));
 
 	return disk;
 }
@@ -230,25 +227,19 @@ static int redirect_read(struct bio *bio)
 	sector_t redir_sector;
 
 	orig_sector = bio->bi_iter.bi_sector;
-	pr_warn("read request: sector %llu\n", orig_sector);
 	node = skiplist_find_node(orig_sector, skiplist);
 	if (!node) {
-		pr_warn("sector %llu is unmapped, trying to map...\n", orig_sector);
 		redir_sector = next_free_sector;
 		next_free_sector += get_bi_size_sectors(bio);
 		node = skiplist_add(orig_sector, redir_sector, skiplist);
 		if (IS_ERR(node)) {
-			pr_warn("failed to map %llu to %llu\n",
+			pr_warn("failed to map %llu to %llu on read\n",
 				orig_sector, redir_sector);
 			return PTR_ERR(node);
 		}
-		pr_warn("successfully mapped %llu to %llu\n",
-			orig_sector, redir_sector);
 	} else {
 		redir_sector = node->data;
 	}
-	pr_warn("successful read from %llu, which is mapped to %llu\n",
-		orig_sector, redir_sector);
 
 	bio->bi_iter.bi_sector = redir_sector;
 
@@ -267,28 +258,18 @@ static int redirect_write(struct bio *bio)
 
 	orig_sector = bio->bi_iter.bi_sector;
 	redir_sector = next_free_sector;
-	pr_warn("write request: sector %llu, next free base sector is %llu\n",
-		orig_sector, next_free_sector);
 
 	node = skiplist_add(orig_sector, redir_sector, skiplist);
 	if (IS_ERR(node)) {
-		pr_err("failed to map %llu to %llu\n", orig_sector, redir_sector);
+		pr_err("failed to map %llu to %llu on write\n",
+			orig_sector, redir_sector);
 		return PTR_ERR(node);
 	}
-
-	if (redir_sector == node->data) {
-		pr_warn("successful write to %llu, which was already mapped to %llu\n",
-			orig_sector, redir_sector);
-	} else {
+	if (redir_sector != node->data) {
 		redir_sector = node->data;
-		pr_warn("successful write to %llu, it is now mapped to %llu\n",
-			orig_sector, redir_sector);
 		next_free_sector += get_bi_size_sectors(bio);
 	}
 	bio->bi_iter.bi_sector = redir_sector;
-
-	pr_warn("next free base sector is %llu\n", next_free_sector);
-	skiplist_print(skiplist);
 
 	return 0;
 }
@@ -353,8 +334,6 @@ static const struct block_device_operations blkm_fops = {
 
 static int close_base(const char *arg, const struct kernel_param *kp)
 {
-	char *disk_name;
-
 	if (!base_handle || !base_handle->bh) {
 		pr_err("nothing to close\n");
 		return -EINVAL;
@@ -363,10 +342,6 @@ static int close_base(const char *arg, const struct kernel_param *kp)
 		pr_err("disk wasn't allocated, cannot close\n");
 		return -EINVAL;
 	}
-
-	disk_name = base_handle->assoc_disk->disk_name;
-	pr_warn("closing device '%s' and destroying disk '%s' based on it\n",
-			base_handle->path, disk_name);
 
 	bdev_release(base_handle->bh);
 	base_handle->bh = NULL;
