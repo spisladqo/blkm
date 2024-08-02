@@ -1,5 +1,14 @@
 KVER ?= $(shell uname -r)
-LK_SRC_DIR := /usr/src/kernels/$(KVER)
+OS := $(shell lsb_release -si)
+
+LK_SRC_DIR_FED := /usr/src/kernels/$(KVER)
+LK_SRC_DIR_ELSE := /usr/src/$(KVER)
+
+ifeq ($(OS),Fedora)
+	LK_SRC_DIR := $(LK_SRC_DIR_FED)
+else
+	LK_SRC_DIR := $(LK_SRC_DIR_ELSE)
+endif
 
 all: build
 
