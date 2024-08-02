@@ -252,6 +252,9 @@ void skiplist_free(struct skiplist *sl)
 	struct skiplist_node *tofree_stack[MAX_LVL + 1];
 	int stack_i;
 
+	if (!sl)
+		return;
+
 	stack_i = 0;
 	tofree_stack[stack_i++] = sl->head;
 
