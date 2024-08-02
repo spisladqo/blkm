@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Bio-based block device driver module by: Daniel Vlasenco
+ * Bio-based block device driver for log-structured storage by: Daniel Vlasenco
  */
 
 #include "blkm.h"
@@ -86,6 +86,9 @@ static void __exit blkm_exit(void)
 	pr_warn("blkdev module exit\n");
 }
 
+/*
+ * sets base block device name if it does not exceed MAX_PATH_LEN
+ */
 static int base_path_set(const char *arg, const struct kernel_param *kp)
 {
 	int len;
@@ -136,6 +139,9 @@ static const struct kernel_param_ops base_ops = {
 	.get = base_path_get,
 };
 
+/*
+ * tries to open base block device, on success creates virtual block device.
+ */
 static int open_base_and_create_disk(const char *arg, const struct kernel_param *kp)
 {
 	struct bdev_handle *bh;
@@ -219,35 +225,35 @@ static sector_t get_bi_size_sectors(struct bio *bio)
 	return (bio->bi_iter.bi_size + SECTOR_SIZE - 1) / SECTOR_SIZE;
 }
 
+/*
+ * changes bio read destination address according to mapping stored in skiplist,
+ * or creates a new mapping
+ */
 static int redirect_read(struct bio *bio)
 {
 	struct skiplist_node *node;
-	sector_t orig_sector;
-	sector_t redir_sector;
+	sector_t orig_address;
+	sector_t redir_address;
 
-	orig_sector = bio->bi_iter.bi_sector;
-	node = skiplist_find_node(orig_sector, skiplist);
+	orig_address = bio->bi_iter.bi_sector;
+	pr_warn("read request: sector %llu\n", orig_address);
+	node = skiplist_find_node(orig_address, skiplist);
 	if (!node) {
-		redir_sector = next_free_sector;
-		next_free_sector += get_bi_size_sectors(bio);
-		node = skiplist_add(orig_sector, redir_sector, skiplist);
-		if (IS_ERR(node)) {
-			pr_warn("failed to map %llu to %llu on read\n",
-				orig_sector, redir_sector);
-			return PTR_ERR(node);
-		}
+		redir_address = orig_address;
+		pr_warn("successful read from %llu, which is unmapped\n", orig_address);
 	} else {
-		redir_sector = node->data;
+		redir_address = node->data;
+		pr_warn("successful read from %llu, which is mapped to %llu\n",
+			orig_address, redir_address);
 	}
-
-	bio->bi_iter.bi_sector = redir_sector;
+	bio->bi_iter.bi_sector = redir_address;
 
 	return 0;
 }
 
 /*
- * TODO: add write lenght check, and if rewrite request exceedes it,
- * do not allow it.
+ * changes bio write destination address according to mapping stored in skiplist
+ * or creates a new mapping.
  */
 static int redirect_write(struct bio *bio)
 {
@@ -273,6 +279,9 @@ static int redirect_write(struct bio *bio)
 	return 0;
 }
 
+/*
+ * function to handle bio address mapping according to skiplist
+ */
 static int map_bio_address(struct bio *bio)
 {
 	enum req_op bio_oper = bio_op(bio);
@@ -301,6 +310,10 @@ static void blkm_bio_end_io(struct bio *bio)
 	bio_put(bio);
 }
 
+/*
+ * function that handles bio redirect. creates a clone with mapped address and
+ * sends it to the base block device.
+ */
 static void blkm_submit_bio(struct bio *bio)
 {
 	struct bio *new_bio;
@@ -331,6 +344,9 @@ static const struct block_device_operations blkm_fops = {
 	.submit_bio = blkm_submit_bio,
 };
 
+/*
+ * closes opened block device and destroyes created virtual disk.
+ */
 static int close_base(const char *arg, const struct kernel_param *kp)
 {
 	if (!base_handle || !base_handle->bh) {
@@ -358,18 +374,18 @@ static const struct kernel_param_ops close_ops = {
 	.get = NULL,
 };
 
-MODULE_PARM_DESC(base, "Base block device name");
-module_param_cb(base, &base_ops, NULL, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(blkm_base, "Base block device name");
+module_param_cb(blkm_base, &base_ops, NULL, S_IRUGO | S_IWUSR);
 
-MODULE_PARM_DESC(open, "Open base block device");
-module_param_cb(open, &open_ops, NULL, S_IWUSR);
+MODULE_PARM_DESC(blkm_open, "Open base block device");
+module_param_cb(blkm_open, &open_ops, NULL, S_IWUSR);
 
-MODULE_PARM_DESC(close, "Close base block device");
-module_param_cb(close, &close_ops, NULL, S_IWUSR);
+MODULE_PARM_DESC(blkm_close, "Close base block device");
+module_param_cb(blkm_close, &close_ops, NULL, S_IWUSR);
 
 module_init(blkm_init);
 module_exit(blkm_exit);
 
-MODULE_AUTHOR("Vlasenco Daniel <vlasenko.daniil26@gmail.com>");
+MODULE_AUTHOR("Daniel Vlasenco <vlasenko.daniil26@gmail.com>");
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Bio-based block device driver module");
+MODULE_DESCRIPTION("Bio-based block device driver for log-structured storage");
