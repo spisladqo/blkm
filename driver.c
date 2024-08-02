@@ -47,17 +47,11 @@ static int __init blkm_init(void)
 		pr_warn("failed to initialize bioset\n");
 		goto init_fail;
 	}
-	skiplist = skiplist_init();
-	if (!skiplist) {
-		pr_warn("failed to initialize skiplist\n");
-		err = -ENOMEM;
-		goto init_fail;
-	}
+
 	pr_warn("blkdev module init\n");
 	return 0;
 
 init_fail:
-	skiplist_free(skiplist);
 	bioset_exit(bio_pool);
 	kfree(bio_pool);
 bioset_alloc_fail:
@@ -157,7 +151,13 @@ static int open_base_and_create_disk(const char *arg, const struct kernel_param 
 		pr_err("base device is already opened\n");
 		return -EBUSY;
 	}
-
+	if (!skiplist){
+		skiplist = skiplist_init();
+		if (!skiplist) {
+			pr_warn("failed to initialize skiplist\n");
+			return -ENOMEM;
+		}
+	}
 	bh = bdev_open_by_path(base_handle->path, BLK_OPEN_READ |
 				BLK_OPEN_WRITE, NULL, NULL);
 	if (IS_ERR(bh)) {
@@ -357,6 +357,13 @@ static int close_base(const char *arg, const struct kernel_param *kp)
 		pr_err("disk wasn't allocated, cannot close\n");
 		return -EINVAL;
 	}
+	disk_name = base_handle->assoc_disk->disk_name;
+	pr_warn("closing device '%s' and destroying disk '%s' based on it\n",
+			base_handle->path, disk_name);
+
+	skiplist_free(skiplist);
+	skiplist = NULL;
+	next_free_sector = 0;
 
 	bdev_release(base_handle->bh);
 	base_handle->bh = NULL;
