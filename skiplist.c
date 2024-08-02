@@ -220,6 +220,7 @@ fail:
 struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 					struct skiplist *sl)
 {
+	struct skiplist_node *prev[MAX_LVL+1];
 	struct skiplist_node *old;
 	struct skiplist_node *new;
 	int lvl;
@@ -251,6 +252,9 @@ void skiplist_free(struct skiplist *sl)
 	struct skiplist_node *tofree;
 	struct skiplist_node *tofree_stack[MAX_LVL + 1];
 	int stack_i;
+
+	if (!sl)
+		return;
 
 	stack_i = 0;
 	tofree_stack[stack_i++] = sl->head;
