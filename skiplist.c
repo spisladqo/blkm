@@ -220,6 +220,7 @@ fail:
 struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 					struct skiplist *sl)
 {
+	struct skiplist_node *prev[MAX_LVL+1];
 	struct skiplist_node *old;
 	struct skiplist_node *new;
 	int lvl;
