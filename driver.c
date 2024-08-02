@@ -357,9 +357,6 @@ static int close_base(const char *arg, const struct kernel_param *kp)
 		pr_err("disk wasn't allocated, cannot close\n");
 		return -EINVAL;
 	}
-	disk_name = base_handle->assoc_disk->disk_name;
-	pr_warn("closing device '%s' and destroying disk '%s' based on it\n",
-			base_handle->path, disk_name);
 
 	skiplist_free(skiplist);
 	skiplist = NULL;
