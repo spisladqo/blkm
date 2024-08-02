@@ -2,12 +2,12 @@ KVER ?= $(shell uname -r)
 OS := $(shell lsb_release -si)
 
 LK_SRC_DIR_FED := /usr/src/kernels/$(KVER)
-LK_SRC_DIR_ELSE := /usr/src/$(KVER)
+LK_SRC_DIR_UB := /usr/src/linux-headers-$(KVER)
 
 ifeq ($(OS),Fedora)
 	LK_SRC_DIR := $(LK_SRC_DIR_FED)
 else
-	LK_SRC_DIR := $(LK_SRC_DIR_ELSE)
+	LK_SRC_DIR := $(LK_SRC_DIR_UB)
 endif
 
 all: build
