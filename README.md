@@ -1,10 +1,10 @@
 # blkm
 
-Bio-based block device driver module for Linux kernel.
+Bio-based block device driver for log-structured storaging.
 
 ## Kernel version
 
-Driver was made for Linux kernel version 6.8.5.
+Driver was made for Linux kernel version 6.8.
 
 ## Preinstallation
 
@@ -19,9 +19,19 @@ Kernel source code is usually located in `/usr/src/` or in `/usr/src/kernels/`. 
 From repo's directory, run `make`. If you see an error, it can mean that you need to open Makefile and correct your kernel's location (or name).
 It can also mean that your kernel version does not support this driver.
 
+## Usage
+
 To insert module into running kernel, run `insmod blkm.ko`.
 
 To remove module from running kernel, run `rmmod blkm.ko`.
+
+To set base block device, run `echo "/name-of-device" > /sys/module/blkm/parameters/blkm_base`
+
+To open base block device and create virtual device, run `echo "1" > /sys/module/blkm/parameters/blkm_open`
+
+To close base block device and destroy virtual device, run `echo "1" > /sys/module/blkm/parameters/blkm_close`
+
+Try reading or writing to virtual device with `dd`.
 
 ## Disclaimer
 
