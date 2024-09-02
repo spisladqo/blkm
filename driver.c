@@ -226,7 +226,7 @@ static sector_t get_bi_size_sectors(struct bio *bio)
 }
 
 /*
- * changes bio read destination address according to mapping stored in skiplist,
+ * changes bio read destination sector according to mapping stored in skiplist,
  * or creates a new mapping
  */
 static int redirect_read(struct bio *bio)
@@ -252,7 +252,7 @@ static int redirect_read(struct bio *bio)
 }
 
 /*
- * changes bio write destination address according to mapping stored in skiplist
+ * changes bio write destination sector according to mapping stored in skiplist
  * or creates a new mapping.
  */
 static int redirect_write(struct bio *bio)
@@ -290,9 +290,9 @@ static int redirect_write(struct bio *bio)
 }
 
 /*
- * function to handle bio address mapping according to skiplist
+ * function to handle bio sector mapping according to skiplist
  */
-static int map_bio_address(struct bio *bio)
+static int map_bio_sector(struct bio *bio)
 {
 	enum req_op bio_oper = bio_op(bio);
 	int err;
@@ -321,7 +321,7 @@ static void blkm_bio_end_io(struct bio *bio)
 }
 
 /*
- * function that handles bio redirect. creates a clone with mapped address and
+ * function that handles bio redirect. creates a clone with mapped bio sector and
  * sends it to the base block device.
  */
 static void blkm_submit_bio(struct bio *bio)
@@ -337,7 +337,7 @@ static void blkm_submit_bio(struct bio *bio)
 
 	new_bio->bi_private = bio;
 	new_bio->bi_end_io = blkm_bio_end_io;
-	err = map_bio_address(new_bio);
+	err = map_bio_sector(new_bio);
 	if (err)
 		goto fail;
 
