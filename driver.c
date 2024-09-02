@@ -258,23 +258,33 @@ static int redirect_read(struct bio *bio)
 static int redirect_write(struct bio *bio)
 {
 	struct skiplist_node *node;
-	sector_t orig_sector;
-	sector_t redir_sector;
+	sector_t orig_address;
+	sector_t redir_address;
 
-	orig_sector = bio->bi_iter.bi_sector;
-	redir_sector = next_free_sector;
+	orig_address = bio->bi_iter.bi_sector;
+	redir_address = next_free_sector;
+	pr_warn("write request: sector %llu, next free base sector is %llu\n",
+		orig_address, next_free_sector);
 
-	node = skiplist_add(orig_sector, redir_sector, skiplist);
+	node = skiplist_add(orig_address, redir_address, skiplist);
 	if (IS_ERR(node)) {
-		pr_err("failed to map %llu to %llu on write\n",
-			orig_sector, redir_sector);
+		pr_err("failed to map %llu to %llu\n", orig_address, redir_address);
 		return PTR_ERR(node);
 	}
-	if (redir_sector != node->data) {
-		redir_sector = node->data;
+
+	if (redir_address != node->data) {
+		redir_address = node->data;
+		pr_warn("successful write to %llu, which was already mapped to %llu\n",
+			orig_address, redir_address);
+	} else {
+		pr_warn("successful write to %llu, it is now mapped to %llu\n",
+			orig_address, redir_address);
 		next_free_sector += get_bi_size_sectors(bio);
 	}
-	bio->bi_iter.bi_sector = redir_sector;
+	bio->bi_iter.bi_sector = redir_address;
+
+	pr_warn("next free base sector is %llu\n", next_free_sector);
+	skiplist_print(skiplist);
 
 	return 0;
 }
