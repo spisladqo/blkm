@@ -232,21 +232,21 @@ static sector_t get_bi_size_sectors(struct bio *bio)
 static int redirect_read(struct bio *bio)
 {
 	struct skiplist_node *node;
-	sector_t orig_address;
-	sector_t redir_address;
+	sector_t virt_disk_sector;
+	sector_t base_disk_sector;
 
-	orig_address = bio->bi_iter.bi_sector;
-	pr_warn("read request: sector %llu\n", orig_address);
-	node = skiplist_find_node(orig_address, skiplist);
+	virt_disk_sector = bio->bi_iter.bi_sector;
+	pr_warn("read request: sector %llu\n", virt_disk_sector);
+	node = skiplist_find_node(virt_disk_sector, skiplist);
 	if (!node) {
-		redir_address = orig_address;
-		pr_warn("successful read from %llu, which is unmapped\n", orig_address);
+		base_disk_sector = virt_disk_sector;
+		pr_warn("successful read from %llu, which is unmapped\n", virt_disk_sector);
 	} else {
-		redir_address = node->data;
+		base_disk_sector = node->data;
 		pr_warn("successful read from %llu, which is mapped to %llu\n",
-			orig_address, redir_address);
+			virt_disk_sector, base_disk_sector);
 	}
-	bio->bi_iter.bi_sector = redir_address;
+	bio->bi_iter.bi_sector = base_disk_sector;
 
 	return 0;
 }
@@ -258,30 +258,30 @@ static int redirect_read(struct bio *bio)
 static int redirect_write(struct bio *bio)
 {
 	struct skiplist_node *node;
-	sector_t orig_address;
-	sector_t redir_address;
+	sector_t virt_disk_sector;
+	sector_t base_disk_sector;
 
-	orig_address = bio->bi_iter.bi_sector;
-	redir_address = next_free_sector;
+	virt_disk_sector = bio->bi_iter.bi_sector;
+	base_disk_sector = next_free_sector;
 	pr_warn("write request: sector %llu, next free base sector is %llu\n",
-		orig_address, next_free_sector);
+		virt_disk_sector, next_free_sector);
 
-	node = skiplist_add(orig_address, redir_address, skiplist);
+	node = skiplist_add(virt_disk_sector, base_disk_sector, skiplist);
 	if (IS_ERR(node)) {
-		pr_err("failed to map %llu to %llu\n", orig_address, redir_address);
+		pr_err("failed to map %llu to %llu\n", virt_disk_sector, base_disk_sector);
 		return PTR_ERR(node);
 	}
 
-	if (redir_address != node->data) {
-		redir_address = node->data;
+	if (base_disk_sector != node->data) {
+		base_disk_sector = node->data;
 		pr_warn("successful write to %llu, which was already mapped to %llu\n",
-			orig_address, redir_address);
+			virt_disk_sector, base_disk_sector);
 	} else {
 		pr_warn("successful write to %llu, it is now mapped to %llu\n",
-			orig_address, redir_address);
+			virt_disk_sector, base_disk_sector);
 		next_free_sector += get_bi_size_sectors(bio);
 	}
-	bio->bi_iter.bi_sector = redir_address;
+	bio->bi_iter.bi_sector = base_disk_sector;
 
 	pr_warn("next free base sector is %llu\n", next_free_sector);
 	skiplist_print(skiplist);
