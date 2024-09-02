@@ -186,8 +186,8 @@ static void get_prev_nodes(sector_t key, struct skiplist *sl,
 	}
 }
 
-static int skiplist_insert_at_lvl(sector_t key, sector_t data,
-				struct skiplist *sl, int lvl)
+static struct skiplist_node *skiplist_insert_at_lvl(sector_t key,
+		sector_t data, struct skiplist *sl, int lvl)
 {
 	struct skiplist_node *prev[MAX_LVL+1];
 	struct skiplist_node *new;
@@ -206,7 +206,7 @@ static int skiplist_insert_at_lvl(sector_t key, sector_t data,
 		temp = new;
 	}
 
-	return 0;
+	return new;
 fail:
 	for (i = i - 1; i >= 0; --i) {
 		new = prev[i]->next;
@@ -214,7 +214,7 @@ fail:
 		kfree(new);
 	}
 
-	return -ENOMEM;
+	return ERR_PTR(-ENOMEM);
 }
 
 struct skiplist_node *skiplist_add(sector_t key, sector_t data,
@@ -234,8 +234,8 @@ struct skiplist_node *skiplist_add(sector_t key, sector_t data,
 	if (err)
 		goto fail;
 
-	err = skiplist_insert_at_lvl(key, data, sl, lvl);
-	if (err)
+	new = skiplist_insert_at_lvl(key, data, sl, lvl);
+	if (IS_ERR(new))
 		goto fail;
 
 	return new;

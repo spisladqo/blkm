@@ -226,63 +226,73 @@ static sector_t get_bi_size_sectors(struct bio *bio)
 }
 
 /*
- * changes bio read destination address according to mapping stored in skiplist,
+ * changes bio read destination sector according to mapping stored in skiplist,
  * or creates a new mapping
  */
 static int redirect_read(struct bio *bio)
 {
 	struct skiplist_node *node;
-	sector_t orig_address;
-	sector_t redir_address;
+	sector_t virt_disk_sector;
+	sector_t base_disk_sector;
 
-	orig_address = bio->bi_iter.bi_sector;
-	pr_warn("read request: sector %llu\n", orig_address);
-	node = skiplist_find_node(orig_address, skiplist);
+	virt_disk_sector = bio->bi_iter.bi_sector;
+	pr_warn("read request: sector %llu\n", virt_disk_sector);
+	node = skiplist_find_node(virt_disk_sector, skiplist);
 	if (!node) {
-		redir_address = orig_address;
-		pr_warn("successful read from %llu, which is unmapped\n", orig_address);
+		base_disk_sector = virt_disk_sector;
+		pr_warn("successful read from %llu, which is unmapped\n", virt_disk_sector);
 	} else {
-		redir_address = node->data;
+		base_disk_sector = node->data;
 		pr_warn("successful read from %llu, which is mapped to %llu\n",
-			orig_address, redir_address);
+			virt_disk_sector, base_disk_sector);
 	}
-	bio->bi_iter.bi_sector = redir_address;
+	bio->bi_iter.bi_sector = base_disk_sector;
 
 	return 0;
 }
 
 /*
- * changes bio write destination address according to mapping stored in skiplist
+ * changes bio write destination sector according to mapping stored in skiplist
  * or creates a new mapping.
  */
 static int redirect_write(struct bio *bio)
 {
 	struct skiplist_node *node;
-	sector_t orig_sector;
-	sector_t redir_sector;
+	sector_t virt_disk_sector;
+	sector_t base_disk_sector;
 
-	orig_sector = bio->bi_iter.bi_sector;
-	redir_sector = next_free_sector;
+	virt_disk_sector = bio->bi_iter.bi_sector;
+	base_disk_sector = next_free_sector;
+	pr_warn("write request: sector %llu, next free base sector is %llu\n",
+		virt_disk_sector, next_free_sector);
 
-	node = skiplist_add(orig_sector, redir_sector, skiplist);
+	node = skiplist_add(virt_disk_sector, base_disk_sector, skiplist);
 	if (IS_ERR(node)) {
-		pr_err("failed to map %llu to %llu on write\n",
-			orig_sector, redir_sector);
+		pr_err("failed to map %llu to %llu\n", virt_disk_sector, base_disk_sector);
 		return PTR_ERR(node);
 	}
-	if (redir_sector != node->data) {
-		redir_sector = node->data;
+
+	if (base_disk_sector != node->data) {
+		base_disk_sector = node->data;
+		pr_warn("successful write to %llu, which was already mapped to %llu\n",
+			virt_disk_sector, base_disk_sector);
+	} else {
+		pr_warn("successful write to %llu, it is now mapped to %llu\n",
+			virt_disk_sector, base_disk_sector);
 		next_free_sector += get_bi_size_sectors(bio);
 	}
-	bio->bi_iter.bi_sector = redir_sector;
+	bio->bi_iter.bi_sector = base_disk_sector;
+
+	pr_warn("next free base sector is %llu\n", next_free_sector);
+	skiplist_print(skiplist);
 
 	return 0;
 }
 
 /*
- * function to handle bio address mapping according to skiplist
+ * function to handle bio sector mapping according to skiplist
  */
-static int map_bio_address(struct bio *bio)
+static int map_bio_sector(struct bio *bio)
 {
 	enum req_op bio_oper = bio_op(bio);
 	int err;
@@ -311,7 +321,7 @@ static void blkm_bio_end_io(struct bio *bio)
 }
 
 /*
- * function that handles bio redirect. creates a clone with mapped address and
+ * function that handles bio redirect. creates a clone with mapped bio sector and
  * sends it to the base block device.
  */
 static void blkm_submit_bio(struct bio *bio)
@@ -327,7 +337,7 @@ static void blkm_submit_bio(struct bio *bio)
 
 	new_bio->bi_private = bio;
 	new_bio->bi_end_io = blkm_bio_end_io;
-	err = map_bio_address(new_bio);
+	err = map_bio_sector(new_bio);
 	if (err)
 		goto fail;
 
